@@ -219,7 +219,8 @@ const App: React.FC = () => {
                 <div className="absolute inset-0 bg-indigo-50 rounded-full -z-10 animate-in zoom-in-50 duration-200"></div>
               )}
               <div className={`transition-transform duration-300 ${activeView === view ? 'scale-110 -translate-y-0.5' : ''}`}>
-                {React.cloneElement(getNavIcon(view) as React.ReactElement, { className: 'w-6 h-6' })}
+                {/* Fixed TypeScript error by providing proper generic parameter to ReactElement */}
+                {React.cloneElement(getNavIcon(view) as React.ReactElement<{ className?: string }>, { className: 'w-6 h-6' })}
               </div>
             </button>
           ))}
@@ -241,7 +242,8 @@ const App: React.FC = () => {
                 }`}
               >
                 <div className={`transition-colors ${activeView === view ? 'text-white' : 'text-slate-400 group-hover:text-indigo-500'}`}>
-                  {React.cloneElement(getNavIcon(view) as React.ReactElement, { className: 'w-5 h-5' })}
+                  {/* Fixed TypeScript error by providing proper generic parameter to ReactElement */}
+                  {React.cloneElement(getNavIcon(view) as React.ReactElement<{ className?: string }>, { className: 'w-5 h-5' })}
                 </div>
                 {view === 'Participant' ? 'Scoreboard' : view}
                 
