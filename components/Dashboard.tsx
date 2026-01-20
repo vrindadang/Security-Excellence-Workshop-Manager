@@ -10,10 +10,9 @@ interface Props {
   sewadars: Sewadar[];
   attendance: AttendanceRecord[];
   scores: ScoreRecord[];
-  onReset: () => void;
 }
 
-const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onReset }) => {
+const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
   const today = new Date().toISOString().split('T')[0];
 
   const totalAttendance = attendance.filter(a => a.date === today).length;
@@ -315,22 +314,9 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onReset }) =
           ))}
         </div>
       </div>
-
-      {/* Admin Zone: Session Management */}
-      <div className="mt-8 pt-8 border-t border-slate-200 text-center">
-         <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">Session Management</p>
-         <button 
-           onClick={onReset} 
-           className="inline-flex items-center gap-2 text-red-400 font-bold text-xs uppercase tracking-widest hover:text-red-600 hover:bg-red-50 px-6 py-3 rounded-xl transition-all border border-transparent hover:border-red-100"
-         >
-           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-           </svg>
-           Start New Day (Reset All)
-         </button>
-      </div>
     </div>
   );
 };
 
 export default Dashboard;
+    

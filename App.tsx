@@ -133,14 +133,6 @@ const App: React.FC = () => {
     ));
   };
 
-  const resetData = () => {
-    if (window.confirm("⚠️ START NEW DAY?\n\nThis will CLEAR ALL Attendance and Score records.\nThe Sewadar list (roster) will remain.\n\nAre you sure you want to continue?")) {
-      setAttendance([]);
-      setScores([]);
-      alert("System has been reset for a new day.");
-    }
-  };
-
   const handleLogout = () => {
     setActiveVolunteer(null);
     setActiveView('Participant');
@@ -200,7 +192,7 @@ const App: React.FC = () => {
           {activeView === 'Participant' && <ParticipantView sewadars={sewadars} attendance={attendance} scores={scores} onAdminLogin={() => setActiveView('Login')} />}
           {activeView === 'Attendance' && <AttendanceManager sewadars={sewadars} attendance={attendance} onToggle={toggleAttendance} onAddSewadar={addSewadar} />}
           {activeView === 'Points' && <PointsManager sewadars={sewadars} attendance={attendance} scores={scores} onAddScore={addScore} onDeleteScore={deleteScore} />}
-          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} onReset={resetData} />}
+          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} />}
         </div>
       </main>
 
@@ -219,8 +211,7 @@ const App: React.FC = () => {
                 <div className="absolute inset-0 bg-indigo-50 rounded-full -z-10 animate-in zoom-in-50 duration-200"></div>
               )}
               <div className={`transition-transform duration-300 ${activeView === view ? 'scale-110 -translate-y-0.5' : ''}`}>
-                {/* Fixed TypeScript error by providing proper generic parameter to ReactElement */}
-                {React.cloneElement(getNavIcon(view) as React.ReactElement<{ className?: string }>, { className: 'w-6 h-6' })}
+                {React.cloneElement(getNavIcon(view) as React.ReactElement, { className: 'w-6 h-6' })}
               </div>
             </button>
           ))}
@@ -242,8 +233,7 @@ const App: React.FC = () => {
                 }`}
               >
                 <div className={`transition-colors ${activeView === view ? 'text-white' : 'text-slate-400 group-hover:text-indigo-500'}`}>
-                  {/* Fixed TypeScript error by providing proper generic parameter to ReactElement */}
-                  {React.cloneElement(getNavIcon(view) as React.ReactElement<{ className?: string }>, { className: 'w-5 h-5' })}
+                  {React.cloneElement(getNavIcon(view) as React.ReactElement, { className: 'w-5 h-5' })}
                 </div>
                 {view === 'Participant' ? 'Scoreboard' : view}
                 
@@ -266,3 +256,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+    
