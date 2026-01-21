@@ -19,6 +19,7 @@ export interface Sewadar {
 
 export interface AttendanceRecord {
   sewadarId: string;
+  name: string; // Added to match Supabase requirement
   date: string; // YYYY-MM-DD
   timestamp: number;
   volunteerId: string;
@@ -27,6 +28,7 @@ export interface AttendanceRecord {
 export interface ScoreRecord {
   id: string;
   sewadarId: string;
+  name: string; // Added to match Supabase requirement
   game: string;
   points: number;
   timestamp: number;

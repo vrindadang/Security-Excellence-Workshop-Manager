@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Sewadar, AttendanceRecord, ScoreRecord } from '../types';
 import { GENTS_GROUPS, VOLUNTEERS } from '../constants';
@@ -20,13 +19,11 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
     const allGroups = [...GENTS_GROUPS, 'Ladies'];
     return allGroups.map(group => {
       const groupSewadars = sewadars.filter(s => s.group === group);
-      
       const presentInGroup = attendance.filter(a => 
         a.date === today && 
         groupSewadars.some(s => s.id === a.sewadarId)
       ).length;
 
-      // Filter out deleted scores
       const groupPoints = scores.filter(sc => 
         groupSewadars.some(s => s.id === sc.sewadarId) && !sc.isDeleted
       ).reduce((sum, sc) => sum + sc.points, 0);
@@ -44,7 +41,6 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
     const allGroups = [...GENTS_GROUPS, 'Ladies'];
     return allGroups.map(group => {
       const groupSewadars = sewadars.filter(s => s.group === group);
-      // Filter out deleted scores
       const groupPoints = scores.filter(sc => 
         groupSewadars.some(s => s.id === sc.sewadarId) && !sc.isDeleted
       ).reduce((sum, sc) => sum + sc.points, 0);
@@ -52,115 +48,32 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
     }).sort((a, b) => b.points - a.points);
   }, [sewadars, scores]);
 
-  // Determine max values for scaling the charts
-  const maxAttendance = Math.max(...combinedGroupData.map(d => d.Attendance), 10); // Minimum scale of 10
-  const maxPoints = Math.max(...combinedGroupData.map(d => d.Points), 20); // Minimum scale of 20
+  const maxAttendance = Math.max(...combinedGroupData.map(d => d.Attendance), 10);
+  const maxPoints = Math.max(...combinedGroupData.map(d => d.Points), 20);
 
   const generateAttendancePDF = () => {
     const doc = new jsPDF();
     const todayStr = new Date().toLocaleDateString();
     
-    // Header
-    doc.setFillColor(79, 70, 229); // Indigo 600
+    doc.setFillColor(79, 70, 229);
     doc.rect(0, 0, 210, 30, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.text("Daily Attendance Report", 14, 18);
     doc.setFontSize(10);
-    doc.text(`Generated on: ${todayStr} | SKRM Security Excellence Workshop`, 14, 25);
+    doc.text(`Generated on: ${todayStr} | Source: Supabase Database`, 14, 25);
 
     let lastY = 40;
     const allGroups = ['Ladies', ...GENTS_GROUPS];
 
     allGroups.forEach(group => {
-      const groupSewadars = sewadars.filter(s => s.group === group);
-      const presentSewadars = groupSewadars
-        .filter(s => attendance.some(a => a.sewadarId === s.id && a.date === today))
+      // Find attendance records for this group's sewadars
+      const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
+      const groupAttRecords = attendance
+        .filter(a => a.date === today && groupSewadarIds.includes(a.sewadarId))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      if (presentSewadars.length > 0) {
-        if (lastY > 260) {
-          doc.addPage();
-          lastY = 20;
-        }
-
-        doc.setFontSize(14);
-        doc.setTextColor(30, 41, 59); // Slate 800
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${group === 'Ladies' ? 'Woman' : 'Gents'} - ${group} Group`, 14, lastY);
-        
-        const tableData = presentSewadars.map((s, index) => {
-          const record = attendance.find(a => a.sewadarId === s.id && a.date === today);
-          const volName = VOLUNTEERS.find(v => v.id === record?.volunteerId)?.name || 'Unknown';
-          return [
-            index + 1,
-            s.name,
-            record ? new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-',
-            volName
-          ];
-        });
-
-        autoTable(doc, {
-          startY: lastY + 5,
-          head: [['#', 'Sewadar Name', 'Time', 'Marked By']],
-          body: tableData,
-          theme: 'striped',
-          headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          styles: { fontSize: 10, cellPadding: 3 },
-          margin: { left: 14, right: 14 }
-        });
-
-        lastY = (doc as any).lastAutoTable.finalY + 15;
-      }
-    });
-
-    if (lastY === 40) {
-       doc.setTextColor(100);
-       doc.text("No attendance marked for today yet.", 14, 50);
-    }
-
-    doc.save(`Attendance_Report_${today}.pdf`);
-  };
-
-  const generatePointsPDF = () => {
-    const doc = new jsPDF();
-    const todayStr = new Date().toLocaleDateString();
-
-    // Header
-    doc.setFillColor(16, 185, 129); // Emerald 500
-    doc.rect(0, 0, 210, 30, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.text("Sewadar Points Report", 14, 18);
-    doc.setFontSize(10);
-    doc.text(`Updated on: ${todayStr} | Group-wise Performance Summary`, 14, 25);
-
-    let lastY = 40;
-    const allGroups = ['Ladies', ...GENTS_GROUPS];
-
-    allGroups.forEach(group => {
-      const groupSewadars = sewadars.filter(s => s.group === group);
-      const sewadarsWithPoints = groupSewadars.map(s => {
-        // Filter out deleted scores
-        const sewadarScores = scores.filter(sc => sc.sewadarId === s.id && !sc.isDeleted);
-        const pts = sewadarScores.reduce((sum, sc) => sum + sc.points, 0);
-
-        // Create breakdown string: e.g. "Chess(10), Carrom(5)"
-        const breakdownMap: Record<string, number> = {};
-        sewadarScores.forEach(sc => {
-          breakdownMap[sc.game] = (breakdownMap[sc.game] || 0) + sc.points;
-        });
-        const breakdown = Object.entries(breakdownMap)
-          .map(([game, points]) => `${game}(${points})`)
-          .join(', ');
-
-        return { ...s, points: pts, breakdown };
-      })
-      .filter(s => s.points > 0)
-      .sort((a, b) => b.points - a.points);
-
-      if (sewadarsWithPoints.length > 0) {
+      if (groupAttRecords.length > 0) {
         if (lastY > 260) {
           doc.addPage();
           lastY = 20;
@@ -169,23 +82,24 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
         doc.setFontSize(14);
         doc.setTextColor(30, 41, 59);
         doc.setFont('helvetica', 'bold');
-        doc.text(`${group === 'Ladies' ? 'Woman' : 'Gents'} - ${group} Group`, 14, lastY);
-
-        const tableData = sewadarsWithPoints.map((s, index) => [
-          index + 1,
-          s.name,
-          s.breakdown,
-          s.points
-        ]);
+        doc.text(`${group} Group`, 14, lastY);
+        
+        const tableData = groupAttRecords.map((record, index) => {
+          const volName = VOLUNTEERS.find(v => v.id === record.volunteerId)?.name || 'Admin';
+          return [
+            index + 1,
+            record.name || 'Unknown Sewadar',
+            new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            volName
+          ];
+        });
 
         autoTable(doc, {
           startY: lastY + 5,
-          head: [['Rank', 'Sewadar Name', 'Game Breakdown', 'Total Points']],
+          head: [['#', 'Sewadar Name', 'Time In', 'Verified By']],
           body: tableData,
-          theme: 'grid',
-          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
-          styles: { fontSize: 10, cellPadding: 3 },
-          columnStyles: { 2: { cellWidth: 80 } }, // Give more width to breakdown column
+          theme: 'striped',
+          headStyles: { fillColor: [99, 102, 241], textColor: 255 },
           margin: { left: 14, right: 14 }
         });
 
@@ -193,50 +107,94 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
       }
     });
 
-    if (lastY === 40) {
-       doc.setTextColor(100);
-       doc.text("No points awarded yet.", 14, 50);
-    }
+    doc.save(`Attendance_Live_${today}.pdf`);
+  };
 
-    doc.save(`Points_Report_${today}.pdf`);
+  const generatePointsPDF = () => {
+    const doc = new jsPDF();
+    const todayStr = new Date().toLocaleDateString();
+
+    doc.setFillColor(16, 185, 129);
+    doc.rect(0, 0, 210, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.text("Workshop Points Summary", 14, 18);
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${todayStr} | Source: Supabase Live Records`, 14, 25);
+
+    let lastY = 40;
+    const allGroups = ['Ladies', ...GENTS_GROUPS];
+
+    allGroups.forEach(group => {
+      const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
+      
+      // Aggregate points from Supabase scores table for this group
+      const pointRecordsMap: Record<string, { name: string, points: number, breakdown: string[] }> = {};
+      
+      scores.filter(sc => !sc.isDeleted && groupSewadarIds.includes(sc.sewadarId)).forEach(sc => {
+        if (!pointRecordsMap[sc.sewadarId]) {
+          pointRecordsMap[sc.sewadarId] = { name: sc.name || 'Unnamed', points: 0, breakdown: [] };
+        }
+        pointRecordsMap[sc.sewadarId].points += sc.points;
+        pointRecordsMap[sc.sewadarId].breakdown.push(`${sc.game}(${sc.points})`);
+      });
+
+      const list = Object.values(pointRecordsMap).sort((a, b) => b.points - a.points);
+
+      if (list.length > 0) {
+        if (lastY > 260) {
+          doc.addPage();
+          lastY = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${group} Group Standings`, 14, lastY);
+
+        const tableData = list.map((item, index) => [
+          index + 1,
+          item.name,
+          item.breakdown.join(', '),
+          item.points
+        ]);
+
+        autoTable(doc, {
+          startY: lastY + 5,
+          head: [['Rank', 'Name', 'Activity Breakdown', 'Total']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [16, 185, 129] },
+          columnStyles: { 2: { cellWidth: 80 } },
+          margin: { left: 14, right: 14 }
+        });
+
+        lastY = (doc as any).lastAutoTable.finalY + 15;
+      }
+    });
+
+    doc.save(`Points_Live_${today}.pdf`);
   };
 
   return (
     <div className="space-y-6">
-      {/* Reports Section */}
-      <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] shadow-xl text-white relative overflow-hidden">
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] shadow-xl text-white">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div>
-            <h2 className="text-xl font-black tracking-tight mb-1">Workshop Reports</h2>
-            <p className="text-slate-400 text-xs font-medium">Download official PDF records for analysis</p>
+            <h2 className="text-xl font-black tracking-tight mb-1">Live Database Reports</h2>
+            <p className="text-slate-400 text-xs">Download synchronized workshop data</p>
           </div>
           <div className="flex gap-3 w-full md:w-auto">
-            <button 
-              onClick={generateAttendancePDF}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Attendance
+            <button onClick={generateAttendancePDF} className="flex-1 md:flex-none bg-indigo-500 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg active:scale-95">
+              Attendance PDF
             </button>
-            <button 
-              onClick={generatePointsPDF}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Points
+            <button onClick={generatePointsPDF} className="flex-1 md:flex-none bg-emerald-500 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg active:scale-95">
+              Points PDF
             </button>
           </div>
         </div>
-        
-        {/* Decorative background */}
-        <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-white/5 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Visual KPIs */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 text-center">
           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Today's Presence</p>
@@ -254,14 +212,13 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
         </div>
       </div>
 
-      {/* Attendance & Points Spread Chart - Custom Implementation */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div className="flex items-center justify-between mb-6">
-           <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">Group Performance Metrics</h3>
+           <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">Group Performance</h3>
            <div className="flex gap-4">
               <div className="flex items-center gap-1.5">
                  <div className="w-2.5 h-2.5 rounded bg-emerald-500"></div>
-                 <span className="text-[9px] font-bold text-slate-400 uppercase">Attendance</span>
+                 <span className="text-[9px] font-bold text-slate-400 uppercase">Presence</span>
               </div>
               <div className="flex items-center gap-1.5">
                  <div className="w-2.5 h-2.5 rounded bg-indigo-500"></div>
@@ -272,65 +229,18 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
         
         <div className="h-[280px] w-full flex items-end justify-between gap-2 md:gap-4 px-2">
            {combinedGroupData.map((data) => {
-             // Calculate heights relative to max
              const attHeight = (data.Attendance / maxAttendance) * 100;
              const ptsHeight = (data.Points / maxPoints) * 100;
-
              return (
-               <div key={data.name} className="flex-1 flex flex-col items-center justify-end h-full gap-2 group">
-                  <div className="w-full flex items-end justify-center gap-1 h-full relative">
-                     {/* Attendance Bar */}
-                     <div 
-                        className="w-3 md:w-5 bg-emerald-500 rounded-t-sm transition-all duration-500 group-hover:bg-emerald-400 relative"
-                        style={{ height: `${Math.max(attHeight, 2)}%` }} // min height for visibility
-                     >
-                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] md:text-[9px] font-black text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                           {data.Attendance}
-                        </span>
-                     </div>
-                     
-                     {/* Points Bar */}
-                     <div 
-                        className="w-3 md:w-5 bg-indigo-500 rounded-t-sm transition-all duration-500 group-hover:bg-indigo-400 relative"
-                        style={{ height: `${Math.max(ptsHeight, 2)}%` }} // min height for visibility
-                     >
-                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] md:text-[9px] font-black text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                           {data.Points}
-                        </span>
-                     </div>
+               <div key={data.name} className="flex-1 flex flex-col items-center justify-end h-full gap-2">
+                  <div className="w-full flex items-end justify-center gap-1 h-full">
+                     <div className="w-3 md:w-5 bg-emerald-500 rounded-t-sm" style={{ height: `${Math.max(attHeight, 2)}%` }}></div>
+                     <div className="w-3 md:w-5 bg-indigo-500 rounded-t-sm" style={{ height: `${Math.max(ptsHeight, 2)}%` }}></div>
                   </div>
-                  
-                  {/* Label */}
-                  <div className="h-6 flex items-center justify-center">
-                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide group-hover:text-indigo-600 transition-colors">
-                        {data.name}
-                     </span>
-                  </div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase">{data.name}</span>
                </div>
              );
            })}
-        </div>
-      </div>
-
-      {/* Team Leaderboard */}
-      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-        <h3 className="text-xs font-black text-slate-800 uppercase tracking-[0.2em] mb-6 text-center">Team Points Leaderboard</h3>
-        <div className="space-y-2">
-          {teamScoresData.map((team, idx) => (
-            <div key={team.name} className="flex items-center justify-between p-3 rounded-xl border border-slate-50 bg-slate-50/50">
-               <div className="flex items-center gap-3">
-                 <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-black ${
-                   idx === 0 ? 'bg-amber-100 text-amber-600' : 'bg-indigo-50 text-indigo-600'
-                 }`}>
-                   {idx + 1}
-                 </span>
-                 <span className="text-xs font-bold text-slate-700">
-                   {team.name === 'Ladies' ? '👩' : '👮‍♂️'} {team.name}
-                 </span>
-               </div>
-               <span className="text-sm font-black text-slate-900">{team.points}</span>
-            </div>
-          ))}
         </div>
       </div>
     </div>
