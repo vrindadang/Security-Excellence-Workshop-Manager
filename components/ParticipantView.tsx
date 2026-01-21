@@ -58,57 +58,65 @@ const ParticipantView: React.FC<Props> = ({ sewadars, attendance, scores, onAdmi
   return (
     <div className="flex flex-col gap-8 pb-8">
       
-      {/* 1. Team Standings */}
-      <section>
-        <div className="flex items-center justify-between mb-6 px-2">
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">Team Standings</h2>
-          <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center text-sm font-black shadow-sm">🏆</div>
-        </div>
-        <div className="space-y-3">
-          {teamStandings.map((team, idx) => (
-            <div key={team.name} className={`bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between transition-all ${idx === 0 ? 'ring-2 ring-amber-400' : ''}`}>
-              <div className="flex items-center gap-4">
-                <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black ${
-                  idx === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  #{idx + 1}
-                </span>
-                <span className="font-black text-slate-700 text-sm">
-                  {team.name === 'Ladies' ? '👩' : '👮‍♂️'} {team.name}
-                </span>
+      {/* Split Layout for Standings & Top Scorers */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        {/* 1. Team Standings */}
+        <section>
+          <div className="flex items-center justify-between mb-4 px-1">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">Team Standings</h2>
+            <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center text-sm font-black shadow-sm">🏆</div>
+          </div>
+          <div className="space-y-3">
+            {teamStandings.map((team, idx) => (
+              <div key={team.name} className={`bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between transition-all ${idx === 0 ? 'ring-2 ring-amber-400' : ''}`}>
+                <div className="flex items-center gap-4">
+                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black ${
+                    idx === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    #{idx + 1}
+                  </span>
+                  <span className="font-black text-slate-700 text-sm">
+                    {team.name === 'Ladies' ? '👩' : '👮‍♂️'} {team.name}
+                  </span>
+                </div>
+                <span className="font-black text-slate-900 text-lg">{team.points} <span className="text-[8px] text-slate-400 font-bold uppercase ml-1">Pts</span></span>
               </div>
-              <span className="font-black text-slate-900 text-lg">{team.points} <span className="text-[8px] text-slate-400 font-bold uppercase ml-1">Pts</span></span>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
 
-      {/* 2. Top 5 Scorers */}
-      <section>
-        <div className="flex items-center justify-between mb-6 px-2">
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">Top 5 Scorers</h2>
-          <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-sm font-black shadow-sm">⭐</div>
-        </div>
-        <div className="space-y-3">
-          {topIndividualScorers.map((scorer, idx) => (
-            <div key={scorer.id} className="bg-white p-4 rounded-2xl shadow-sm border-l-[6px] border-l-indigo-600 border-y border-r border-slate-100 flex items-center justify-between group">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-black text-sm">#{idx + 1}</div>
-                <div>
-                  <p className="font-black text-slate-800 text-sm leading-none">{scorer.name}</p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                    {scorer.group === 'Ladies' ? '👩' : '👮‍♂️'} {scorer.group}
-                  </p>
+        {/* 2. Top 5 Scorers */}
+        <section>
+          <div className="flex items-center justify-between mb-4 px-1">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">Top 5 Scorers</h2>
+            <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-sm font-black shadow-sm">⭐</div>
+          </div>
+          <div className="space-y-3">
+            {topIndividualScorers.map((scorer, idx) => (
+              <div key={scorer.id} className="bg-white p-4 rounded-2xl shadow-sm border-l-[6px] border-l-indigo-600 border-y border-r border-slate-100 flex items-center justify-between group">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-black text-sm">#{idx + 1}</div>
+                  <div>
+                    <p className="font-black text-slate-800 text-sm leading-none">{scorer.name}</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                      {scorer.group === 'Ladies' ? '👩' : '👮‍♂️'} {scorer.group}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                   <span className="font-black text-slate-900 text-lg block leading-none">{scorer.totalPoints}</span>
+                   <span className="text-[8px] text-indigo-500 font-bold uppercase">Points</span>
                 </div>
               </div>
-              <div className="text-right">
-                 <span className="font-black text-slate-900 text-lg block leading-none">{scorer.totalPoints}</span>
-                 <span className="text-[8px] text-indigo-500 font-bold uppercase">Points</span>
+            ))}
+            {topIndividualScorers.length === 0 && (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <p className="text-xs text-slate-400 font-medium">No points awarded yet.</p>
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            )}
+          </div>
+        </section>
+      </div>
 
       {/* 3. Individual Lookup Tool */}
       <div className="bg-indigo-900 rounded-[2rem] p-6 md:p-8 text-white shadow-2xl relative">

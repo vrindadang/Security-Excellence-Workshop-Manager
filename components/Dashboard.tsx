@@ -2,7 +2,6 @@
 import React, { useMemo } from 'react';
 import { Sewadar, AttendanceRecord, ScoreRecord } from '../types';
 import { GENTS_GROUPS, VOLUNTEERS } from '../constants';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList, Legend } from 'recharts';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -34,6 +33,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
 
       return { 
         name: group.substring(0, 3), 
+        fullName: group,
         Attendance: presentInGroup, 
         Points: groupPoints 
       };
@@ -51,6 +51,10 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
       return { name: group, points: groupPoints };
     }).sort((a, b) => b.points - a.points);
   }, [sewadars, scores]);
+
+  // Determine max values for scaling the charts
+  const maxAttendance = Math.max(...combinedGroupData.map(d => d.Attendance), 10); // Minimum scale of 10
+  const maxPoints = Math.max(...combinedGroupData.map(d => d.Points), 20); // Minimum scale of 20
 
   const generateAttendancePDF = () => {
     const doc = new jsPDF();
@@ -250,46 +254,61 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
         </div>
       </div>
 
-      {/* Attendance & Points Spread Chart */}
-      <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-        <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] mb-6 text-center">Group Performance Metrics</h3>
-        <div className="h-[280px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart 
-              data={combinedGroupData}
-              margin={{ top: 20, right: 10, left: -20, bottom: 5 }}
-            >
-              <XAxis 
-                dataKey="name" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fontSize: 9, fontWeight: 800, fill: '#64748b' }} 
-              />
-              <YAxis hide />
-              <Tooltip 
-                cursor={{ fill: '#f8fafc' }} 
-                contentStyle={{ 
-                  borderRadius: '12px', 
-                  border: 'none', 
-                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                  fontSize: '12px',
-                  fontWeight: 'bold'
-                }} 
-              />
-              <Legend 
-                verticalAlign="top" 
-                align="right" 
-                iconType="circle"
-                wrapperStyle={{ fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', paddingBottom: '20px' }}
-              />
-              <Bar dataKey="Attendance" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12}>
-                <LabelList dataKey="Attendance" position="top" style={{ fontSize: '9px', fontWeight: 'bold', fill: '#10b981' }} />
-              </Bar>
-              <Bar dataKey="Points" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={12}>
-                <LabelList dataKey="Points" position="top" style={{ fontSize: '9px', fontWeight: 'bold', fill: '#6366f1' }} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Attendance & Points Spread Chart - Custom Implementation */}
+      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-6">
+           <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">Group Performance Metrics</h3>
+           <div className="flex gap-4">
+              <div className="flex items-center gap-1.5">
+                 <div className="w-2.5 h-2.5 rounded bg-emerald-500"></div>
+                 <span className="text-[9px] font-bold text-slate-400 uppercase">Attendance</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                 <div className="w-2.5 h-2.5 rounded bg-indigo-500"></div>
+                 <span className="text-[9px] font-bold text-slate-400 uppercase">Points</span>
+              </div>
+           </div>
+        </div>
+        
+        <div className="h-[280px] w-full flex items-end justify-between gap-2 md:gap-4 px-2">
+           {combinedGroupData.map((data) => {
+             // Calculate heights relative to max
+             const attHeight = (data.Attendance / maxAttendance) * 100;
+             const ptsHeight = (data.Points / maxPoints) * 100;
+
+             return (
+               <div key={data.name} className="flex-1 flex flex-col items-center justify-end h-full gap-2 group">
+                  <div className="w-full flex items-end justify-center gap-1 h-full relative">
+                     {/* Attendance Bar */}
+                     <div 
+                        className="w-3 md:w-5 bg-emerald-500 rounded-t-sm transition-all duration-500 group-hover:bg-emerald-400 relative"
+                        style={{ height: `${Math.max(attHeight, 2)}%` }} // min height for visibility
+                     >
+                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] md:text-[9px] font-black text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                           {data.Attendance}
+                        </span>
+                     </div>
+                     
+                     {/* Points Bar */}
+                     <div 
+                        className="w-3 md:w-5 bg-indigo-500 rounded-t-sm transition-all duration-500 group-hover:bg-indigo-400 relative"
+                        style={{ height: `${Math.max(ptsHeight, 2)}%` }} // min height for visibility
+                     >
+                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] md:text-[9px] font-black text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                           {data.Points}
+                        </span>
+                     </div>
+                  </div>
+                  
+                  {/* Label */}
+                  <div className="h-6 flex items-center justify-center">
+                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide group-hover:text-indigo-600 transition-colors">
+                        {data.name}
+                     </span>
+                  </div>
+               </div>
+             );
+           })}
         </div>
       </div>
 
@@ -319,4 +338,3 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
 };
 
 export default Dashboard;
-    

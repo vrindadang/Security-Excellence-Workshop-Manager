@@ -51,7 +51,7 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
 
   const handleAwardPoints = () => {
     if (selectedSewadarId && selectedGame) {
-      onAddScore(selectedSewadarId, selectedGame, 5);
+      onAddScore(selectedSewadarId, selectedGame, 50); // Updated to 50 points per user request
       setSelectedGame('');
       // Smooth scroll back to top on mobile after awarding
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -87,7 +87,6 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Step 1: Filter & Select */}
       <section className="space-y-4">
         <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex gap-2">
           {(['Gents', 'Ladies'] as Gender[]).map((g) => (
@@ -103,7 +102,6 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
           ))}
         </div>
 
-        {/* Group Tabs - Only show if NOT searching */}
         {genderTab === 'Gents' && !searchTerm && (
           <div className="overflow-x-auto pb-1 no-scrollbar -mx-4 px-4">
             <div className="flex gap-2 min-w-max">
@@ -157,10 +155,8 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
         </div>
       </section>
 
-      {/* Step 2: Award Points Interface */}
       {selectedSewadarId && selectedSewadar && (
         <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
-           {/* Summary Card */}
            <div className="bg-indigo-900 text-white p-6 rounded-[2rem] shadow-xl relative overflow-hidden">
               <div className="relative z-10">
                 <p className="text-indigo-300 text-[10px] font-black uppercase tracking-widest mb-1">Selected Sewadar</p>
@@ -175,7 +171,6 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
               <div className="absolute -right-6 -bottom-12 w-32 h-32 bg-indigo-500/30 rounded-full blur-2xl"></div>
            </div>
 
-           {/* Game Buttons */}
            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
               <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4">Award Points</h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
@@ -203,11 +198,10 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
                     : 'bg-slate-100 text-slate-300 cursor-not-allowed'
                 }`}
               >
-                Award 5 Points
+                Award 50 Points
               </button>
            </div>
 
-           {/* History for this user */}
            <div className="space-y-2 pb-12">
              <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Today's Activity</h3>
              {sewadarScores.length > 0 ? (
@@ -224,7 +218,6 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
                          : 'bg-white border-slate-100'
                      }`}
                    >
-                      {/* Background flash for confirming state */}
                       {!isDeleted && (
                         <div className={`absolute inset-0 bg-red-50 transition-opacity duration-300 pointer-events-none ${isConfirming ? 'opacity-100' : 'opacity-0'}`} />
                       )}
