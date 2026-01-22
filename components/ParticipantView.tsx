@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Sewadar, AttendanceRecord, ScoreRecord } from '../types';
 import { GENTS_GROUPS } from '../constants';
@@ -9,6 +8,25 @@ interface Props {
   scores: ScoreRecord[];
   onAdminLogin: () => void;
 }
+
+// Fixed ScorerCard type to include React component attributes like 'key' by moving it outside and using React.FC
+const ScorerCard: React.FC<{ scorer: any, idx: number, gender: 'Ladies' | 'Gents' }> = ({ scorer, idx, gender }) => (
+  <div className={`bg-white p-4 rounded-2xl shadow-sm border-l-[6px] ${gender === 'Ladies' ? 'border-l-pink-500' : 'border-l-indigo-600'} border-y border-r border-slate-100 flex items-center justify-between group transition-all hover:shadow-md`}>
+    <div className="flex items-center gap-3">
+      <div className={`w-9 h-9 ${gender === 'Ladies' ? 'bg-pink-50 text-pink-600' : 'bg-indigo-50 text-indigo-600'} rounded-xl flex items-center justify-center font-black text-xs`}>#{idx + 1}</div>
+      <div>
+        <p className="font-black text-slate-800 text-sm leading-none">{scorer.name}</p>
+        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+          {scorer.group}
+        </p>
+      </div>
+    </div>
+    <div className="text-right">
+       <span className={`font-black ${gender === 'Ladies' ? 'text-pink-600' : 'text-indigo-600'} text-lg block leading-none`}>{scorer.totalPoints}</span>
+       <span className="text-[7px] text-slate-400 font-bold uppercase">Pts</span>
+    </div>
+  </div>
+);
 
 const ParticipantView: React.FC<Props> = ({ sewadars, attendance, scores, onAdminLogin }) => {
   const [searchName, setSearchName] = useState('');
@@ -31,17 +49,32 @@ const ParticipantView: React.FC<Props> = ({ sewadars, attendance, scores, onAdmi
     });
   }, [sewadars, scores]);
 
-  const topIndividualScorers = useMemo(() => {
-    const individualTotals = sewadars.map(s => {
-      const total = scores
-        .filter(sc => sc.sewadarId === s.id && !sc.isDeleted)
-        .reduce((sum, sc) => sum + sc.points, 0);
-      return { ...s, totalPoints: total };
-    });
-    return individualTotals
+  const topLadies = useMemo(() => {
+    return sewadars
+      .filter(s => s.gender === 'Ladies')
+      .map(s => ({
+        ...s,
+        totalPoints: scores
+          .filter(sc => sc.sewadarId === s.id && !sc.isDeleted)
+          .reduce((sum, sc) => sum + sc.points, 0)
+      }))
       .filter(s => s.totalPoints > 0)
       .sort((a, b) => b.totalPoints - a.totalPoints)
-      .slice(0, 5);
+      .slice(0, 3);
+  }, [sewadars, scores]);
+
+  const topGents = useMemo(() => {
+    return sewadars
+      .filter(s => s.gender === 'Gents')
+      .map(s => ({
+        ...s,
+        totalPoints: scores
+          .filter(sc => sc.sewadarId === s.id && !sc.isDeleted)
+          .reduce((sum, sc) => sum + sc.points, 0)
+      }))
+      .filter(s => s.totalPoints > 0)
+      .sort((a, b) => b.totalPoints - a.totalPoints)
+      .slice(0, 3);
   }, [sewadars, scores]);
 
   const searchResults = useMemo(() => {
@@ -85,35 +118,44 @@ const ParticipantView: React.FC<Props> = ({ sewadars, attendance, scores, onAdmi
           </div>
         </section>
 
-        {/* 2. Top 5 Scorers */}
-        <section>
-          <div className="flex items-center justify-between mb-4 px-1">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">Top 5 Scorers</h2>
-            <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-sm font-black shadow-sm">⭐</div>
+        {/* 2. Top Performers (Ladies & Gents) */}
+        <section className="space-y-6">
+          {/* Top 3 Ladies */}
+          <div>
+            <div className="flex items-center justify-between mb-4 px-1">
+              <h2 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                <span className="p-1.5 bg-pink-100 rounded-lg text-pink-600 text-xs">👩</span> Top 3 Ladies
+              </h2>
+            </div>
+            <div className="space-y-2">
+              {topLadies.map((scorer, idx) => (
+                <ScorerCard key={scorer.id} scorer={scorer} idx={idx} gender="Ladies" />
+              ))}
+              {topLadies.length === 0 && (
+                <div className="p-4 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <p className="text-[10px] text-slate-400 font-medium italic">No scores yet.</p>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="space-y-3">
-            {topIndividualScorers.map((scorer, idx) => (
-              <div key={scorer.id} className="bg-white p-4 rounded-2xl shadow-sm border-l-[6px] border-l-indigo-600 border-y border-r border-slate-100 flex items-center justify-between group">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-black text-sm">#{idx + 1}</div>
-                  <div>
-                    <p className="font-black text-slate-800 text-sm leading-none">{scorer.name}</p>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                      {scorer.group === 'Ladies' ? '👩' : '👮‍♂️'} {scorer.group}
-                    </p>
-                  </div>
+
+          {/* Top 3 Gents */}
+          <div>
+            <div className="flex items-center justify-between mb-4 px-1">
+              <h2 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                <span className="p-1.5 bg-indigo-100 rounded-lg text-indigo-600 text-xs">👮‍♂️</span> Top 3 Gents
+              </h2>
+            </div>
+            <div className="space-y-2">
+              {topGents.map((scorer, idx) => (
+                <ScorerCard key={scorer.id} scorer={scorer} idx={idx} gender="Gents" />
+              ))}
+              {topGents.length === 0 && (
+                <div className="p-4 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <p className="text-[10px] text-slate-400 font-medium italic">No scores yet.</p>
                 </div>
-                <div className="text-right">
-                   <span className="font-black text-slate-900 text-lg block leading-none">{scorer.totalPoints}</span>
-                   <span className="text-[8px] text-indigo-500 font-bold uppercase">Points</span>
-                </div>
-              </div>
-            ))}
-            {topIndividualScorers.length === 0 && (
-              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                <p className="text-xs text-slate-400 font-medium">No points awarded yet.</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </section>
       </div>

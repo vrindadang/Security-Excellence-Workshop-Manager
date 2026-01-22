@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ViewState, AttendanceRecord, ScoreRecord, Sewadar, Volunteer, Gender, GentsGroup } from './types';
 import { INITIAL_SEWADARS } from './constants';
@@ -30,6 +31,13 @@ const App: React.FC = () => {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [scores, setScores] = useState<ScoreRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Helper to check if current volunteer is restricted
+  const isRestrictedVolunteer = (v: Volunteer | null) => {
+    if (!v) return false;
+    const restrictedNames = ['Volunteer 1', 'Volunteer 2', 'Volunteer 3'];
+    return restrictedNames.includes(v.name);
+  };
 
   // Persistence effects
   useEffect(() => {
@@ -167,7 +175,12 @@ const App: React.FC = () => {
   }, []);
 
   const toggleAttendance = async (sewadarId: string) => {
-    if (!activeVolunteer) return;
+    // Restricted check
+    if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) {
+      console.warn("Unauthorized: Volunteer restricted from marking attendance.");
+      return;
+    }
+    
     const sewadar = sewadars.find(s => s.id === sewadarId);
     if (!sewadar) return;
 
@@ -227,7 +240,12 @@ const App: React.FC = () => {
   };
 
   const addSewadar = async (name: string, gender: Gender, group: GentsGroup | 'Ladies') => {
-    if (!activeVolunteer) return;
+    // Restricted check
+    if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) {
+      console.warn("Unauthorized: Volunteer restricted from registering new sewadars.");
+      return;
+    }
+    
     const newId = `${gender === 'Gents' ? 'G' : 'L'}-Added-${Date.now()}`;
     const { error } = await supabase
       .from('sewadars')
@@ -280,8 +298,15 @@ const App: React.FC = () => {
     );
   }
 
+  // Filter navigation items based on volunteer permissions
   const navItems = (['Participant', 'Attendance', 'Points', 'Dashboard'] as ViewState[])
-    .filter(v => activeVolunteer || v === 'Participant');
+    .filter(v => {
+      if (v === 'Participant') return true;
+      if (!activeVolunteer) return false;
+      // Restriction: Volunteer 1, 2, 3 cannot see Attendance
+      if (v === 'Attendance' && isRestrictedVolunteer(activeVolunteer)) return false;
+      return true;
+    });
 
   const getNavIcon = (view: ViewState) => {
     switch(view) {
@@ -293,7 +318,11 @@ const App: React.FC = () => {
     }
   };
 
-  if (activeView === 'Login') return <Login onLogin={(v) => { setActiveVolunteer(v); setActiveView('Attendance'); }} onCancel={() => setActiveView('Participant')} />;
+  if (activeView === 'Login') return <Login onLogin={(v) => { 
+    setActiveVolunteer(v); 
+    // Logic: Restricted volunteers default to 'Points' screen upon login
+    setActiveView(isRestrictedVolunteer(v) ? 'Points' : 'Attendance'); 
+  }} onCancel={() => setActiveView('Participant')} />;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

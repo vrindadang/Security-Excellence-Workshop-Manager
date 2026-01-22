@@ -9,7 +9,10 @@ export const VOLUNTEERS: Volunteer[] = [
   { id: 'v1', name: 'Karuna', role: 'Security Lead', password: '111' },
   { id: 'v2', name: 'Sonal GABA', role: 'Event Coordinator', password: '222' },
   { id: 'v3', name: 'Neha Arora', role: 'Field Supervisor', password: '333' },
-  { id: 'v4', name: 'Sonal Takkar', role: 'Logistics Manager', password: '444' }
+  { id: 'v4', name: 'Sonal Takkar', role: 'Logistics Manager', password: '444' },
+  { id: 'v5', name: 'Volunteer 1', role: 'Volunteer', password: '555' },
+  { id: 'v6', name: 'Volunteer 2', role: 'Volunteer', password: '666' },
+  { id: 'v7', name: 'Volunteer 3', role: 'Volunteer', password: '777' }
 ];
 
 // Data from Security Duty Records PDF
