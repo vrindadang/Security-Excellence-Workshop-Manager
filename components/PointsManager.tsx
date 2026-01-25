@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sewadar, Gender, AttendanceRecord, GentsGroup, ScoreRecord, GAMES } from '../types';
 import { GENTS_GROUPS, VOLUNTEERS } from '../constants';
@@ -82,6 +81,17 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
 
   const selectedSewadar = sewadars.find(s => s.id === selectedSewadarId);
   const sewadarScores = scores.filter(sc => sc.sewadarId === selectedSewadarId);
+  
+  // Calculate game counts for the selected sewadar
+  const gameCounts = useMemo(() => {
+    if (!selectedSewadarId) return {};
+    const counts: Record<string, number> = {};
+    scores.filter(sc => sc.sewadarId === selectedSewadarId && !sc.isDeleted).forEach(sc => {
+      counts[sc.game] = (counts[sc.game] || 0) + 1;
+    });
+    return counts;
+  }, [scores, selectedSewadarId]);
+
   // Calculate total ignoring deleted scores
   const totalScore = sewadarScores.reduce((acc, curr) => acc + (curr.isDeleted ? 0 : curr.points), 0);
 
@@ -174,19 +184,30 @@ const PointsManager: React.FC<Props> = ({ sewadars, attendance, scores, onAddSco
            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
               <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4">Award Points</h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-                {GAMES.map(game => (
-                  <button
-                    key={game}
-                    onClick={() => setSelectedGame(game)}
-                    className={`py-3 px-2 rounded-xl text-[10px] font-black uppercase tracking-wide border-2 transition-all ${
-                      selectedGame === game 
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' 
-                        : 'bg-white text-slate-500 border-slate-100 hover:border-indigo-200'
-                    }`}
-                  >
-                    {game}
-                  </button>
-                ))}
+                {GAMES.map(game => {
+                  const currentCount = gameCounts[game] || 0;
+                  const isLimitReached = currentCount >= 5;
+                  
+                  return (
+                    <button
+                      key={game}
+                      disabled={isLimitReached}
+                      onClick={() => setSelectedGame(game)}
+                      className={`py-3 px-2 rounded-xl text-[10px] font-black uppercase tracking-wide border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                        isLimitReached
+                          ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed opacity-60'
+                          : selectedGame === game 
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' 
+                            : 'bg-white text-slate-500 border-slate-100 hover:border-indigo-200'
+                      }`}
+                    >
+                      <span>{game}</span>
+                      <span className={`text-[8px] font-bold ${selectedGame === game ? 'text-indigo-200' : 'text-slate-400'}`}>
+                        ({currentCount}/5)
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               <button

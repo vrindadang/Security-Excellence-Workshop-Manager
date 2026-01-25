@@ -8,9 +8,11 @@ interface Props {
   sewadars: Sewadar[];
   attendance: AttendanceRecord[];
   scores: ScoreRecord[];
+  onSyncMasterList?: () => void;
+  syncingMasterList?: boolean;
 }
 
-const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
+const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMasterList, syncingMasterList }) => {
   const today = new Date().toISOString().split('T')[0];
 
   const totalAttendance = attendance.filter(a => a.date === today).length;
@@ -67,7 +69,6 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
     const allGroups = ['Ladies', ...GENTS_GROUPS];
 
     allGroups.forEach(group => {
-      // Find attendance records for this group's sewadars
       const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
       const groupAttRecords = attendance
         .filter(a => a.date === today && groupSewadarIds.includes(a.sewadarId))
@@ -127,8 +128,6 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
 
     allGroups.forEach(group => {
       const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
-      
-      // Aggregate points from Supabase scores table for this group
       const pointRecordsMap: Record<string, { name: string, points: number, breakdown: string[] }> = {};
       
       scores.filter(sc => !sc.isDeleted && groupSewadarIds.includes(sc.sewadarId)).forEach(sc => {
@@ -193,6 +192,24 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores }) => {
             </button>
           </div>
         </div>
+        
+        {onSyncMasterList && (
+          <div className="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase text-indigo-300 tracking-widest">Database Management</span>
+              <p className="text-[11px] text-slate-400">Remove old dummies & sync master list</p>
+            </div>
+            <button 
+              onClick={onSyncMasterList} 
+              disabled={syncingMasterList}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                syncingMasterList ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-white/10 hover:bg-white text-white hover:text-slate-900 shadow-lg'
+              }`}
+            >
+              {syncingMasterList ? 'Purging...' : 'Clean Sync (Remove Dummies)'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

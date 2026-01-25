@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ViewState, AttendanceRecord, ScoreRecord, Sewadar, Volunteer, Gender, GentsGroup } from './types';
 import { INITIAL_SEWADARS } from './constants';
@@ -13,7 +12,6 @@ const STORAGE_KEY_VOLUNTEER = 'skrm_active_volunteer';
 const STORAGE_KEY_VIEW = 'skrm_active_view';
 
 const App: React.FC = () => {
-  // Initialize state from localStorage for persistent login
   const [activeVolunteer, setActiveVolunteer] = useState<Volunteer | null>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_VOLUNTEER);
     return saved ? JSON.parse(saved) : null;
@@ -22,7 +20,6 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ViewState>(() => {
     const savedView = localStorage.getItem(STORAGE_KEY_VIEW) as ViewState;
     const savedVol = localStorage.getItem(STORAGE_KEY_VOLUNTEER);
-    // If logged in, restore last view or default to Attendance. Else Participant.
     if (savedVol) return savedView || 'Attendance';
     return 'Participant';
   });
@@ -31,15 +28,28 @@ const App: React.FC = () => {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [scores, setScores] = useState<ScoreRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
-  // Helper to check if current volunteer is restricted
   const isRestrictedVolunteer = (v: Volunteer | null) => {
     if (!v) return false;
     const restrictedNames = ['Volunteer 1', 'Volunteer 2', 'Volunteer 3'];
     return restrictedNames.includes(v.name);
   };
 
-  // Persistence effects
+  // Helper to filter out any "Behenji" dummy records
+  const filterValidSewadars = (list: Sewadar[]) => {
+    return list.filter(s => !s.name.toLowerCase().includes('behenji'));
+  };
+
+  const getTableNames = (id: string) => {
+    const isLadies = id.startsWith('L-');
+    return {
+      attendance: isLadies ? 'ladies_attendance' : 'attendance',
+      scores: isLadies ? 'ladies_scores' : 'scores',
+      sewadars: isLadies ? 'ladies_sewadars' : 'sewadars'
+    };
+  };
+
   useEffect(() => {
     if (activeVolunteer) {
       localStorage.setItem(STORAGE_KEY_VOLUNTEER, JSON.stringify(activeVolunteer));
@@ -52,7 +62,6 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_KEY_VIEW, activeView);
   }, [activeView]);
 
-  // 1. Initial Data Fetch & Seeding
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setLoading(false);
@@ -62,195 +71,181 @@ const App: React.FC = () => {
     const initData = async () => {
       try {
         setLoading(true);
-        
-        const { data: sewData, error: sewError } = await supabase.from('sewadars').select('*');
-        if (sewError) throw sewError;
+        // Fetch from both master tables
+        const [{ data: gents }, { data: ladies }] = await Promise.all([
+          supabase.from('sewadars').select('*'),
+          supabase.from('ladies_sewadars').select('*')
+        ]);
 
-        if (sewData && sewData.length > 0) {
-          setSewadars(sewData);
-        } else {
-          console.log("Database empty. Seeding initial sewadars...");
-          await supabase.from('sewadars').insert(INITIAL_SEWADARS);
-          const { data: refreshedSewData } = await supabase.from('sewadars').select('*');
-          if (refreshedSewData) setSewadars(refreshedSewData);
-        }
+        const allSewadars = filterValidSewadars([...(gents || []), ...(ladies || [])] as Sewadar[]);
+        setSewadars(allSewadars);
 
         const today = new Date().toISOString().split('T')[0];
-        const { data: attData } = await supabase.from('attendance').select('*').eq('date', today);
-        if (attData) {
-          setAttendance(attData.map((a: any) => ({
-            sewadarId: a.sewadar_id,
-            name: a.name || '',
-            date: a.date,
-            timestamp: Number(a.timestamp),
-            volunteerId: a.volunteer_id
-          })));
-        }
+        
+        // Fetch attendance and scores from all tables
+        const [
+          { data: gentsAtt }, { data: ladiesAtt },
+          { data: gentsScore }, { data: ladiesScore }
+        ] = await Promise.all([
+          supabase.from('attendance').select('*').eq('date', today),
+          supabase.from('ladies_attendance').select('*').eq('date', today),
+          supabase.from('scores').select('*'),
+          supabase.from('ladies_scores').select('*')
+        ]);
 
-        const { data: scoreData } = await supabase.from('scores').select('*');
-        if (scoreData) {
-          setScores(scoreData.map((s: any) => ({
-            id: s.id,
-            sewadarId: s.sewadar_id,
-            name: s.name || '',
-            game: s.game,
-            points: s.points,
-            timestamp: Number(s.timestamp),
-            volunteerId: s.volunteer_id,
-            isDeleted: s.is_deleted
-          })));
-        }
+        const combinedAtt = [...(gentsAtt || []), ...(ladiesAtt || [])].map((a: any) => ({
+          sewadarId: a.sewadar_id,
+          name: a.name || '',
+          date: a.date,
+          timestamp: Number(a.timestamp),
+          volunteerId: a.volunteer_id
+        }));
+        setAttendance(combinedAtt);
+
+        const combinedScores = [...(gentsScore || []), ...(ladiesScore || [])].map((s: any) => ({
+          id: s.id,
+          sewadarId: s.sewadar_id,
+          name: s.name || '',
+          game: s.game,
+          points: s.points,
+          timestamp: Number(s.timestamp),
+          volunteerId: s.volunteer_id,
+          isDeleted: s.is_deleted
+        }));
+        setScores(combinedScores);
 
       } catch (err) {
-        console.error("Failed to fetch data from Supabase:", err);
+        console.error("Failed to fetch data:", err);
       } finally {
         setLoading(false);
       }
     };
-
     initData();
   }, []);
 
-  // 2. Real-time Subscriptions
+  // Set up 6 subscriptions (3 for Gents, 3 for Ladies)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
-    const attendanceSub = supabase
-      .channel('attendance_changes')
-      .on('postgres_changes', { event: '*', table: 'attendance' }, (payload: any) => {
-        if (payload.eventType === 'INSERT') {
-          const newAtt = payload.new;
-          setAttendance(prev => {
-            if (prev.some(a => a.sewadarId === newAtt.sewadar_id && a.date === newAtt.date)) return prev;
-            return [...prev, {
-              sewadarId: newAtt.sewadar_id,
-              name: newAtt.name || '',
-              date: newAtt.date,
-              timestamp: Number(newAtt.timestamp),
-              volunteerId: newAtt.volunteer_id
-            }];
-          });
-        } else if (payload.eventType === 'DELETE') {
-          const oldAtt = payload.old;
-          setAttendance(prev => prev.filter(a => !(a.sewadarId === oldAtt.sewadar_id && a.date === oldAtt.date)));
+    const channels = [
+      'attendance', 'ladies_attendance', 
+      'scores', 'ladies_scores', 
+      'sewadars', 'ladies_sewadars'
+    ].map(table => {
+      return supabase.channel(`${table}_changes`).on('postgres_changes', { event: '*', table: table }, (payload: any) => {
+        if (table.includes('attendance')) {
+          if (payload.eventType === 'INSERT') {
+            const newAtt = payload.new;
+            setAttendance(prev => {
+              if (prev.some(a => a.sewadarId === newAtt.sewadar_id && a.date === newAtt.date)) return prev;
+              return [...prev, { sewadarId: newAtt.sewadar_id, name: newAtt.name || '', date: newAtt.date, timestamp: Number(newAtt.timestamp), volunteerId: newAtt.volunteer_id }];
+            });
+          } else if (payload.eventType === 'DELETE') {
+            setAttendance(prev => prev.filter(a => !(a.sewadarId === payload.old.sewadar_id && a.date === payload.old.date)));
+          }
+        } else if (table.includes('scores')) {
+          if (payload.eventType === 'INSERT') {
+            const newScore = payload.new;
+            setScores(prev => {
+              if (prev.some(s => s.id === newScore.id)) return prev;
+              return [...prev, { id: newScore.id, sewadarId: newScore.sewadar_id, name: newScore.name || '', game: newScore.game, points: newScore.points, timestamp: Number(newScore.timestamp), volunteerId: newScore.volunteer_id, isDeleted: newScore.is_deleted }];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            setScores(prev => prev.map(s => s.id === payload.new.id ? { ...s, isDeleted: payload.new.is_deleted } : s));
+          } else if (payload.eventType === 'DELETE') {
+            setScores(prev => prev.filter(s => s.id !== payload.old.id));
+          }
+        } else { // Sewadars
+          if (payload.eventType === 'INSERT') {
+            const newSew = payload.new as Sewadar;
+            if (newSew.name.toLowerCase().includes('behenji')) return;
+            setSewadars(prev => prev.some(s => s.id === newSew.id) ? prev : [...prev, newSew]);
+          } else if (payload.eventType === 'DELETE') {
+            setSewadars(prev => prev.filter(s => s.id !== payload.old.id));
+          }
         }
-      })
-      .subscribe();
-
-    const scoreSub = supabase
-      .channel('score_changes')
-      .on('postgres_changes', { event: '*', table: 'scores' }, (payload: any) => {
-        if (payload.eventType === 'INSERT') {
-          const newScore = payload.new;
-          setScores(prev => {
-            if (prev.some(s => s.id === newScore.id)) return prev;
-            return [...prev, {
-              id: newScore.id,
-              sewadarId: newScore.sewadar_id,
-              name: newScore.name || '',
-              game: newScore.game,
-              points: newScore.points,
-              timestamp: Number(newScore.timestamp),
-              volunteerId: newScore.volunteer_id,
-              isDeleted: newScore.is_deleted
-            }];
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const updated = payload.new;
-          setScores(prev => prev.map(s => s.id === updated.id ? {
-            ...s,
-            isDeleted: updated.is_deleted
-          } : s));
-        } else if (payload.eventType === 'DELETE') {
-          const deleted = payload.old;
-          setScores(prev => prev.filter(s => s.id !== deleted.id));
-        }
-      })
-      .subscribe();
+      }).subscribe();
+    });
 
     return () => {
-      supabase.removeChannel(attendanceSub);
-      supabase.removeChannel(scoreSub);
+      channels.forEach(ch => supabase.removeChannel(ch));
     };
   }, []);
 
-  const toggleAttendance = async (sewadarId: string) => {
-    // Restricted check
-    if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) {
-      console.warn("Unauthorized: Volunteer restricted from marking attendance.");
-      return;
-    }
+  const syncMasterList = async () => {
+    if (isRestrictedVolunteer(activeVolunteer)) return;
+    if (!confirm("This will PERMANENTLY DELETE all current sewadar records and reload the master list (132 Ladies + Gents). Attendance and Scores will NOT be deleted, but may lose linked names. Proceed?")) return;
     
+    setSyncing(true);
+    try {
+      const gents = filterValidSewadars(INITIAL_SEWADARS.filter(s => s.gender === 'Gents'));
+      const ladies = filterValidSewadars(INITIAL_SEWADARS.filter(s => s.gender === 'Ladies'));
+
+      // 1. Purge existing records to remove "Behenji" or dummy data
+      await Promise.all([
+        supabase.from('sewadars').delete().neq('id', 'purged'), 
+        supabase.from('ladies_sewadars').delete().neq('id', 'purged')
+      ]);
+
+      // 2. Insert fresh master list
+      await Promise.all([
+        supabase.from('sewadars').insert(gents),
+        supabase.from('ladies_sewadars').insert(ladies)
+      ]);
+      
+      const [{ data: g }, { data: l }] = await Promise.all([
+        supabase.from('sewadars').select('*'),
+        supabase.from('ladies_sewadars').select('*')
+      ]);
+      setSewadars(filterValidSewadars([...(g || []), ...(l || [])]));
+      alert("Clean Sync Complete! Dummy records removed and master list reloaded.");
+    } catch (err) {
+      console.error("Sync failed:", err);
+      alert("Database sync failed. Check connection.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const toggleAttendance = async (sewadarId: string) => {
+    if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) return;
     const sewadar = sewadars.find(s => s.id === sewadarId);
     if (!sewadar) return;
 
+    const tables = getTableNames(sewadarId);
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const existing = attendance.find(a => a.sewadarId === sewadarId && a.date === dateStr);
     
     if (existing) {
-      const { error: attError } = await supabase
-        .from('attendance')
-        .delete()
-        .match({ sewadar_id: sewadarId, date: dateStr });
-
+      const { error: attError } = await supabase.from(tables.attendance).delete().match({ sewadar_id: sewadarId, date: dateStr });
       if (!attError) {
         setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
-        
         const startOfDay = new Date(now.setHours(0,0,0,0)).getTime();
         const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
-        
-        await supabase
-          .from('scores')
-          .delete()
-          .match({ sewadar_id: sewadarId, game: 'Daily Attendance' })
-          .gte('timestamp', startOfDay)
-          .lte('timestamp', endOfDay);
+        await supabase.from(tables.scores).delete().match({ sewadar_id: sewadarId, game: 'Daily Attendance' }).gte('timestamp', startOfDay).lte('timestamp', endOfDay);
       }
     } else {
       const timestamp = now.getTime();
       const attendancePoints = now.getHours() < 10 ? 100 : 50;
-
-      const { error: attError } = await supabase
-        .from('attendance')
-        .insert({
-          sewadar_id: sewadarId,
-          name: sewadar.name,
-          date: dateStr,
-          timestamp: timestamp,
-          volunteer_id: activeVolunteer.id
-        });
-
+      const { error: attError } = await supabase.from(tables.attendance).insert({ sewadar_id: sewadarId, name: sewadar.name, date: dateStr, timestamp: timestamp, volunteer_id: activeVolunteer.id });
       if (!attError) {
         const scoreId = `att-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-        await supabase
-          .from('scores')
-          .insert({
-            id: scoreId,
-            sewadar_id: sewadarId,
-            name: sewadar.name,
-            game: 'Daily Attendance',
-            points: attendancePoints,
-            timestamp: timestamp,
-            volunteer_id: activeVolunteer.id,
-            is_deleted: false
-          });
+        await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: 'Daily Attendance', points: attendancePoints, timestamp: timestamp, volunteer_id: activeVolunteer.id, is_deleted: false });
       }
     }
   };
 
   const addSewadar = async (name: string, gender: Gender, group: GentsGroup | 'Ladies') => {
-    // Restricted check
-    if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) {
-      console.warn("Unauthorized: Volunteer restricted from registering new sewadars.");
+    if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) return;
+    if (name.toLowerCase().includes('behenji')) {
+      alert("Invalid name. 'Behenji' placeholder is not allowed.");
       return;
     }
-    
     const newId = `${gender === 'Gents' ? 'G' : 'L'}-Added-${Date.now()}`;
-    const { error } = await supabase
-      .from('sewadars')
-      .insert({ id: newId, name, gender, group });
+    const tables = getTableNames(newId);
     
+    const { error } = await supabase.from(tables.sewadars).insert({ id: newId, name, gender, group });
     if (!error) {
       setSewadars(prev => [...prev, { id: newId, name, gender, group }]);
       toggleAttendance(newId);
@@ -262,22 +257,24 @@ const App: React.FC = () => {
     const sewadar = sewadars.find(s => s.id === sewadarId);
     if (!sewadar) return;
 
-    const scoreId = `man-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    await supabase.from('scores').insert({
-      id: scoreId,
-      sewadar_id: sewadarId,
-      name: sewadar.name,
-      game: game,
-      points: points,
-      timestamp: Date.now(),
-      volunteer_id: activeVolunteer.id,
-      is_deleted: false
-    });
+    // Check 5-score limit per game
+    const currentCount = scores.filter(s => s.sewadarId === sewadarId && s.game === game && !s.isDeleted).length;
+    if (currentCount >= 5) {
+      alert(`Limit Reached! ${sewadar.name} has already been awarded points for ${game} 5 times.`);
+      return;
+    }
+
+    const tables = getTableNames(sewadarId);
+    const scoreId = `${sewadarId.startsWith('L') ? 'lscore' : 'man'}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: game, points: points, timestamp: Date.now(), volunteer_id: activeVolunteer.id, is_deleted: false });
   };
 
   const deleteScore = async (scoreId: string) => {
     if (!scoreId) return;
-    await supabase.from('scores').update({ is_deleted: true }).eq('id', scoreId);
+    await Promise.all([
+      supabase.from('scores').update({ is_deleted: true }).eq('id', scoreId),
+      supabase.from('ladies_scores').update({ is_deleted: true }).eq('id', scoreId)
+    ]);
   };
 
   const handleLogout = () => {
@@ -286,8 +283,6 @@ const App: React.FC = () => {
     localStorage.removeItem(STORAGE_KEY_VOLUNTEER);
     localStorage.removeItem(STORAGE_KEY_VIEW);
   };
-
-  if (!isSupabaseConfigured) return <div className="p-10 text-center">Supabase connection missing. Check environment variables.</div>;
 
   if (loading) {
     return (
@@ -298,15 +293,12 @@ const App: React.FC = () => {
     );
   }
 
-  // Filter navigation items based on volunteer permissions
-  const navItems = (['Participant', 'Attendance', 'Points', 'Dashboard'] as ViewState[])
-    .filter(v => {
-      if (v === 'Participant') return true;
-      if (!activeVolunteer) return false;
-      // Restriction: Volunteer 1, 2, 3 cannot see Attendance
-      if (v === 'Attendance' && isRestrictedVolunteer(activeVolunteer)) return false;
-      return true;
-    });
+  const navItems = (['Participant', 'Attendance', 'Points', 'Dashboard'] as ViewState[]).filter(v => {
+    if (v === 'Participant') return true;
+    if (!activeVolunteer) return false;
+    if (v === 'Attendance' && isRestrictedVolunteer(activeVolunteer)) return false;
+    return true;
+  });
 
   const getNavIcon = (view: ViewState) => {
     switch(view) {
@@ -318,11 +310,7 @@ const App: React.FC = () => {
     }
   };
 
-  if (activeView === 'Login') return <Login onLogin={(v) => { 
-    setActiveVolunteer(v); 
-    // Logic: Restricted volunteers default to 'Points' screen upon login
-    setActiveView(isRestrictedVolunteer(v) ? 'Points' : 'Attendance'); 
-  }} onCancel={() => setActiveView('Participant')} />;
+  if (activeView === 'Login') return <Login onLogin={(v) => { setActiveVolunteer(v); setActiveView(isRestrictedVolunteer(v) ? 'Points' : 'Attendance'); }} onCancel={() => setActiveView('Participant')} />;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -332,7 +320,7 @@ const App: React.FC = () => {
             <h1 className="text-sm md:text-xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-indigo-200">
               Security Excellence Workshop
             </h1>
-            <p className="text-[10px] md:text-xs text-indigo-300 font-medium">SKRM Manager • Active Sync</p>
+            <p className="text-[10px] md:text-xs text-indigo-300 font-medium">SKRM Manager • Master List</p>
           </div>
           <div className="flex items-center gap-2">
             {activeVolunteer ? (
@@ -357,20 +345,14 @@ const App: React.FC = () => {
           {activeView === 'Participant' && <ParticipantView sewadars={sewadars} attendance={attendance} scores={scores} onAdminLogin={() => setActiveView('Login')} />}
           {activeView === 'Attendance' && <AttendanceManager sewadars={sewadars} attendance={attendance} onToggle={toggleAttendance} onAddSewadar={addSewadar} />}
           {activeView === 'Points' && <PointsManager sewadars={sewadars} attendance={attendance} scores={scores} onAddScore={addScore} onDeleteScore={deleteScore} />}
-          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} />}
+          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} onSyncMasterList={syncMasterList} syncingMasterList={syncing} />}
         </div>
       </main>
 
       <nav className="fixed bottom-6 left-4 right-4 z-50 md:hidden">
         <div className="glass-effect rounded-full shadow-2xl border border-white/50 p-1.5 max-w-sm mx-auto flex justify-between items-center">
           {navItems.map((view) => (
-            <button
-              key={view}
-              onClick={() => setActiveView(view)}
-              className={`flex-1 flex flex-col items-center justify-center py-3 rounded-full transition-all duration-300 relative ${
-                activeView === view ? 'text-indigo-600' : 'text-slate-400'
-              }`}
-            >
+            <button key={view} onClick={() => setActiveView(view)} className={`flex-1 flex flex-col items-center justify-center py-3 rounded-full transition-all duration-300 relative ${activeView === view ? 'text-indigo-600' : 'text-slate-400'}`}>
               {activeView === view && <div className="absolute inset-0 bg-indigo-50 rounded-full -z-10"></div>}
               {getNavIcon(view)}
             </button>
@@ -381,13 +363,7 @@ const App: React.FC = () => {
       <div className="hidden md:block fixed left-0 top-0 bottom-0 z-30 w-64 pt-24 px-4 border-r border-slate-100 bg-white/50 backdrop-blur-sm">
          <div className="space-y-2 mt-4">
             {navItems.map((view) => (
-              <button
-                key={view}
-                onClick={() => setActiveView(view)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${
-                  activeView === view ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white'
-                }`}
-              >
+              <button key={view} onClick={() => setActiveView(view)} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeView === view ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white'}`}>
                 {getNavIcon(view)}
                 {view === 'Participant' ? 'Scoreboard' : view}
               </button>

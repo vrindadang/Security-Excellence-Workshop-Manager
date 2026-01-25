@@ -15,7 +15,6 @@ export const VOLUNTEERS: Volunteer[] = [
   { id: 'v7', name: 'Volunteer 3', role: 'Volunteer', password: '777' }
 ];
 
-// Data from Security Duty Records PDF
 const SUNDAY_LIST = [
   "Amar Nath", "Ganpat Bhatia", "Manish Munjal", "Surinder Raheja", "Parvesh Bhatia", "Ajit Singh", "Vinod Gaba",
   "Abhishek Chawla", "Anand Sharma", "Anil Kapoor", "Ankush Malik", "Arshit Raheja", "Ashish Rathore", "Ashok Harjai", "Ashok Kapoor", "Ashok Saini", "Ashok Sharma", "Atul Bansal", "B.B Khanna", "Baldev Gandhi", "Chaman Lal", "Dashrath Parsad", "Fakir Chand", "Gulshan Arora", "Harender Singh", "Harish Kumar", "Harvansh Verma", "Hemant", "Jai Kishan Arora", "Janak Raj Sharma", "Joginder Lal", "Kapil Budhiraja", "Kapil Mehndru", "Laxmi Chand", "Maange Ram", "Madan Gopal Sharma", "Madhuker Bhanot", "Madhusudan Malik", "Manmohan Arora", "Miras", "Mohak Bahel", "Parvesh Kumar", "Prem Gandhi", "Purshotam Gulati", "Rahul Gandhi", "Rajnish Kumar", "Rakesh Gulati", "Rakshit Gupta", "Ram Chander", "Ramesh Chand", "Sachin Arora", "Sachin Budhiraja", "Sachin Verma", "Sahil Malik", "Sahil Tiwari", "Sailesh", "Sandeep Ahuja", "Sandeep Manocha", "Satish Saini", "Saurav", "Sheetal Parsad", "Shyam Murari", "Suraj Parkash", "Tarun Bhudiraja", "Tilak Raj", "Upender Parsad", "Ved Dua", "Vinod Kumar", "Vipin Khanna", "Vishal Dawar", "Yogesh Madan"
@@ -51,10 +50,13 @@ const SATURDAY_LIST = [
   "Akash Kheterpal", "Amar Singh", "Amar Singh Yadav", "Amit Bhutani", "Amrit Lal", "Anil Chawla", "Anil Kumar", "Ankit Khetarpal", "Ankur Bhutani", "Arjun Singh", "Arun Kumar", "Ashok Kumar Sharma", "Ashok Sindal", "Avinash Madan", "Bhushan Lal Thukral", "Dara Singh", "Deepak Chhabra", "Deepak Saini", "Devki Nandan", "Dharam Pal", "Dharamveer Gupta", "Dilip Singh", "Gajender Chauhan", "Gulshan Rajpal", "Gurdarshan", "Gurmeet Singh", "H.L Batra", "Harish", "Hemant", "Himanshu Ahuja", "Hitesh Bhatia", "Jatin Bhatia", "Jitender Kr", "Jitender Singh", "Joginder Pal", "Joginder Singh", "K.K. Kalra", "K P Singh", "K.R Bhatia", "Kapil Khetarpal", "Kishan Lal Ahuja", "Kunal Bhatia", "L K Nagpal", "Madan Mohan", "Manish Kumar", "Manmohan Ahuja", "Naresh Kumar", "Nirmal Kumar Singh", "Pitamber", "Piyush Anand", "Praveen Malik", "Prem Saluja", "Puneet Ahuja", "Rajesh Gandhi", "Raj Bhadur Singh", "Raj Kumar Sikka", "Rajender Kumar", "Rajinder Gulati", "Rakesh Munjal", "Ram Kumar", "Ram Niwas", "Ramesh Chand", "Ramesh Sharma", "Ranjeet Singh", "Ravinder Singh", "Rishikesh", "Roshan Lal", "Sachin Arora", "Sahil Arora", "Sanjeev Dhawan", "Satish Kr", "Shankar Lal Bhatia", "Shri Krishan", "Shubham Virmani", "Shunty Nagpal", "Som Datt", "Subhash Rathor", "Sudesh Yadav", "Sumit Gambhir", "Surender Singh (Ii)", "Surender Verma", "Surinder Singh", "Sushil Malik", "Tara Chand", "Umed Singh", "Vijay Kumar", "Vijay Singh", "Vipul Bhatia", "Yadvinder Singh", "Yogesh Kumar", "Yogesh Matta"
 ];
 
-const generateMockSewadars = (): Sewadar[] => {
+const LADIES_LIST = [
+  "KANTA RANI", "JYOTI KHERA", "SUMAN SETHI", "AARTI KOHLI", "ALKA VERMA", "ANITA AHUJA", "ANITA BHARDWAJ", "ANITA SETHI", "ANITA MAKKAR", "ASHA KAPOOR", "BHARTI UDAR", "BHAGWATI SHARMA", "BIMAL KHARBANDA", "BIMLA DHINGRA", "BIMLA DUTT", "BIMLESH SISODIA", "CHANDER ARORA", "CHANCHAL HARJAI", "CHANDRA NAILWAL", "DARSHNA DUA", "DINESH DEVI", "GEETA OHRI", "GEETA PANIPAT", "JYOTI MALHOTRA", "JOLLY JOHAR", "KAMLESH ARORA", "KAMLESH BHARDWAJ", "KAMLESH DEVI", "KAMLESH SAINI", "KAMLESH VERMA", "KANTA ARORA", "KANTA GUPTA", "KANTA SHARMA", "KARMAWALI", "KIRAN BALA", "KRISHNA DEVI", "KUNTI DEVI", "KOSHAL BHUTANI", "KUSUM LATA", "KUSUM LATA RAJPUT", "LALITA GANDHI", "LAJYA WANTI", "LAXMI SOLANKI", "MAMTA AHUJA", "MAMTA SAINI", "MAMTA SHARMA", "MANJU CHAUHAN", "MAYA KAJAL", "MEENAKSHI", "MEHAK CHAWLA", "NEELAM CHOKRA", "NEELAM CHAWLA", "NEELAM GANDHI", "NEELAM NARULA", "NEELAM MIGLANI", "NEELAM VERMA", "NEENA KHARBANDA", "NEERU BHALLA", "NEERU BUDHIRAJA", "NEERU CHOPRA", "NEERU SAINI", "NIRMAL RANA", "NIRMLA DEVI", "NISHA RANI", "OM WATI", "PAWAN KUMARI", "PHOOL WATI", "POONAM KHANDAN", "PINKI CHOPRA", "PUSHPA HANS", "PUSHPA SINGH", "PUSHPA SHARMA", "PUSHPA TANEJA", "RACHNA", "RAJ CHHABRA", "RAM WATI", "RAMA ARORA", "RAMA CHAUHAN", "RANI (NANGLOI)", "RANI GUMBER", "RANI RAJKUMARI", "RANU SINGHLA", "RAVI KANTA", "RENU MALIK", "RESHMA YADAV", "RUCHIKA SONI", "SANTOSH BHANOT", "SANTOSH DEVI", "SANTOSH DUHAN", "SANTOSH MEHRA", "SANTOSH NANDA", "SANTOSH SAHRAWAT", "SANTOSH VERMA", "SANYOGITA AHUJA", "SATYA MANOCHA", "SAVITRI (PALWAL)", "SHAKUNTLA BABBAR", "SHAKUNTLA SINGH", "SHASHI GAMBHIR", "SHASHI MANOCHA", "SHEEL CHAWLA", "SHEEL KHERA", "SHEELA GABA", "SHIKHA AHUJA", "SHRUTI", "SNEH CHUGH", "SUDESH BATRA", "SUDESH ROHILLA", "SUDESH SINGH", "SUMAN BHATIA", "SUMAN SHARMA", "SUNITA DUA", "SUNITA VERMA", "SUNITA MEHRA", "SUNITA SAINI", "SUNITA SAINI MONDAY", "SUMITRA YADAV", "SUSHILA CHAWLA", "SUSHILA SHARMA", "SUSHMA BHUTANI", "SWARNA GANDHI", "TARUNA SETH", "USHA (TIMARPUR)", "USHA ARORA", "USHA DHINGRA", "USHA RANI", "VANISHA GROVER", "VEENA CHAUHAN", "VEENA GHERA", "VEENA MUNJAL", "VIJAY LAXMI", "VISHO DEVI"
+];
+
+const generateInitialSewadars = (): Sewadar[] => {
   const sewadars: Sewadar[] = [];
   
-  // Helper to add list
   const addList = (list: string[], group: GentsGroup) => {
     list.forEach((name, i) => {
       sewadars.push({
@@ -74,17 +76,17 @@ const generateMockSewadars = (): Sewadar[] => {
   addList(SATURDAY_LIST, 'Saturday');
   addList(SUNDAY_LIST, 'Sunday');
 
-  // Generate Ladies (Kept as mock since not provided in PDF)
-  for (let i = 1; i <= 25; i++) {
+  // Use the actual list of Ladies provided
+  LADIES_LIST.forEach((name, i) => {
     sewadars.push({
       id: `L-Ladies-${i}`,
-      name: `Behenji ${i}`,
+      name: name,
       gender: 'Ladies',
       group: 'Ladies'
     });
-  }
+  });
 
   return sewadars;
 };
 
-export const INITIAL_SEWADARS = generateMockSewadars();
+export const INITIAL_SEWADARS = generateInitialSewadars();
