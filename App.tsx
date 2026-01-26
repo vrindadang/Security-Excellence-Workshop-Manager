@@ -31,6 +31,14 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
+  // Helper to get IST (India Standard Time) Date Object
+  const getISTTime = (baseDate?: Date) => {
+    const d = baseDate || new Date();
+    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    const nd = new Date(utc + (3600000 * 5.5)); // UTC + 5.5 hours
+    return nd;
+  };
+
   const isRestrictedVolunteer = (v: Volunteer | null) => {
     if (!v) return false;
     const restrictedNames = ['Volunteer 1', 'Volunteer 2', 'Volunteer 3'];
@@ -204,29 +212,29 @@ const App: React.FC = () => {
 
   const clearAllAttendance = async () => {
     if (!activeVolunteer || (activeVolunteer.id !== 'sa' && activeVolunteer.role !== 'Super Admin')) return;
-    if (!window.confirm("UNMARK ALL: This will delete all attendance logs AND the points associated with attendance for both Gents and Ladies. Proceed?")) return;
-
+    if (!window.confirm("This will PERMANENTLY DELETE ALL attendance records and attendance points for TODAY. Proceed?")) return;
+    
     setSyncing(true);
     try {
-      const results = await Promise.all([
-        supabase.from('attendance').delete().not('sewadar_id', 'is', null),
-        supabase.from('ladies_attendance').delete().not('sewadar_id', 'is', null),
-        supabase.from('scores').delete().eq('game', 'Daily Attendance'),
-        supabase.from('ladies_scores').delete().eq('game', 'Daily Attendance')
+      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const startOfDay = new Date(now.setHours(0, 0, 0, 0)).getTime();
+      const endOfDay = new Date(now.setHours(23, 59, 59, 999)).getTime();
+
+      await Promise.all([
+        supabase.from('attendance').delete().eq('date', today),
+        supabase.from('ladies_attendance').delete().eq('date', today),
+        supabase.from('scores').delete().eq('game', 'Daily Attendance').gte('timestamp', startOfDay).lte('timestamp', endOfDay),
+        supabase.from('ladies_scores').delete().eq('game', 'Daily Attendance').gte('timestamp', startOfDay).lte('timestamp', endOfDay)
       ]);
 
-      const errors = results.filter(r => r.error);
-      if (errors.length > 0) {
-        alert(`Database Error: ${errors[0].error?.message}`);
-        return;
-      }
+      setAttendance(prev => prev.filter(a => a.date !== today));
+      setScores(prev => prev.filter(s => !(s.game === 'Daily Attendance' && s.timestamp >= startOfDay && s.timestamp <= endOfDay)));
       
-      setAttendance([]);
-      setScores(prev => prev.filter(s => s.game !== 'Daily Attendance'));
-      alert("SUCCESS: All attendance has been unmarked.");
-    } catch (err: any) {
-      console.error(err);
-      alert(`Wipe failed: ${err.message}`);
+      alert("Attendance cleared for today.");
+    } catch (err) {
+      console.error("Clear failed:", err);
+      alert("Database operation failed.");
     } finally {
       setSyncing(false);
     }
@@ -236,39 +244,37 @@ const App: React.FC = () => {
     if (!activeVolunteer || (activeVolunteer.id !== 'sa' && activeVolunteer.role !== 'Super Admin')) return;
     
     const confirmMsg = forceTo100 
-      ? "FORCE ALL TO 100: This will set ALL attendance points for TODAY to 100, ignoring the 10:30 AM rule. Use this to fix entries like Aman Sharma. Proceed?"
-      : "HEAL: This will check all attendance scores for today and correct those that should have been 100 points (marked before 10:30 AM). Proceed?";
+      ? "FORCE 100 PTS: This will upgrade ALL attendance records with 50 points to 100 points for TODAY. Proceed?"
+      : "HEAL: This will fix attendance scores based on the 10:30 AM IST rule. Proceed?";
       
     if (!window.confirm(confirmMsg)) return;
 
     setSyncing(true);
     let correctedCount = 0;
     try {
-      const today = new Date().toISOString().split('T')[0];
       const now = new Date();
-      const startOfDay = new Date(now.setHours(0,0,0,0)).getTime();
-      const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
+      const todayStart = new Date(now.setHours(0,0,0,0)).getTime();
+      const todayEnd = new Date(now.setHours(23,59,59,999)).getTime();
 
-      const attendanceScoresToCheck = scores.filter(s => 
+      const attendanceScoresToday = scores.filter(s => 
         s.game === 'Daily Attendance' && 
-        s.timestamp >= startOfDay && 
-        s.timestamp <= endOfDay
+        s.timestamp >= todayStart && 
+        s.timestamp <= todayEnd
       );
 
-      for (const score of attendanceScoresToCheck) {
+      for (const score of attendanceScoresToday) {
         let correctPoints;
         if (forceTo100) {
+          if (score.points === 100) continue;
           correctPoints = 100;
         } else {
-          const dateObj = new Date(score.timestamp);
-          const isEarly = dateObj.getHours() < 10 || (dateObj.getHours() === 10 && dateObj.getMinutes() < 30);
+          const istNow = getISTTime(new Date(score.timestamp));
+          const isEarly = istNow.getHours() < 10 || (istNow.getHours() === 10 && istNow.getMinutes() < 30);
           correctPoints = isEarly ? 100 : 50;
         }
 
         if (score.points !== correctPoints) {
-          const isLadies = score.sewadarId.startsWith('L-');
-          const table = isLadies ? 'ladies_scores' : 'scores';
-          
+          const table = score.sewadarId.startsWith('L-') ? 'ladies_scores' : 'scores';
           const { error } = await supabase.from(table).update({ points: correctPoints }).eq('id', score.id);
           if (!error) {
             correctedCount++;
@@ -276,10 +282,10 @@ const App: React.FC = () => {
           }
         }
       }
-      alert(`HEAL COMPLETE: Corrected ${correctedCount} point records.`);
+      alert(`COMPLETE: Updated ${correctedCount} attendance records to 100 points.`);
     } catch (err: any) {
       console.error(err);
-      alert(`Heal failed: ${err.message}`);
+      alert(`Sync failed: ${err.message}`);
     } finally {
       setSyncing(false);
     }
@@ -289,16 +295,12 @@ const App: React.FC = () => {
      if (!activeVolunteer) return;
      const score = scores.find(s => s.id === scoreId);
      if (!score) return;
-     
-     const isLadies = score.sewadarId.startsWith('L-');
-     const table = isLadies ? 'ladies_scores' : 'scores';
-     
-     // Optimistic
+     const table = score.sewadarId.startsWith('L-') ? 'ladies_scores' : 'scores';
      setScores(prev => prev.map(s => s.id === scoreId ? { ...s, points: 100 } : s));
      const { error } = await supabase.from(table).update({ points: 100 }).eq('id', scoreId);
      if (error) {
        setScores(prev => prev.map(s => s.id === scoreId ? { ...s, points: 50 } : s));
-       alert("Failed to promote: " + error.message);
+       alert("Promotion failed.");
      }
   };
 
@@ -315,23 +317,14 @@ const App: React.FC = () => {
     if (existing) {
       setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
       setScores(prev => prev.filter(s => !(s.sewadarId === sewadarId && s.game === 'Daily Attendance')));
-
-      const { error: attError } = await supabase.from(tables.attendance).delete().match({ sewadar_id: sewadarId, date: dateStr });
-      if (!attError) {
-        const startOfDay = new Date(now.setHours(0,0,0,0)).getTime();
-        const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
-        await supabase.from(tables.scores).delete().match({ sewadar_id: sewadarId, game: 'Daily Attendance' }).gte('timestamp', startOfDay).lte('timestamp', endOfDay);
-      } else {
-        const [{data: att}, {data: sc}] = await Promise.all([
-           supabase.from(tables.attendance).select('*').match({ sewadar_id: sewadarId, date: dateStr }),
-           supabase.from(tables.scores).select('*').match({ sewadar_id: sewadarId, game: 'Daily Attendance' })
-        ]);
-        if (att) setAttendance(prev => [...prev, ...att.map((a: any) => ({ sewadarId: a.sewadar_id, name: a.name || '', date: a.date, timestamp: Number(a.timestamp), volunteerId: a.volunteer_id }))]);
-        if (sc) setScores(prev => [...prev, ...sc.map((s: any) => ({ id: s.id, sewadarId: s.sewadar_id, name: s.name || '', game: s.game, points: s.points, timestamp: Number(s.timestamp), volunteerId: s.volunteer_id, isDeleted: s.is_deleted }))]);
-      }
+      await supabase.from(tables.attendance).delete().match({ sewadar_id: sewadarId, date: dateStr });
+      const startOfDay = new Date(now.setHours(0,0,0,0)).getTime();
+      const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
+      await supabase.from(tables.scores).delete().match({ sewadar_id: sewadarId, game: 'Daily Attendance' }).gte('timestamp', startOfDay).lte('timestamp', endOfDay);
     } else {
       const timestamp = now.getTime();
-      const isEarly = now.getHours() < 10 || (now.getHours() === 10 && now.getMinutes() < 30);
+      const istNow = getISTTime(now);
+      const isEarly = istNow.getHours() < 10 || (istNow.getHours() === 10 && istNow.getMinutes() < 30);
       const attendancePoints = isEarly ? 100 : 50;
       const tempId = `temp-${Date.now()}`;
 
@@ -345,7 +338,7 @@ const App: React.FC = () => {
       } else {
         setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
         setScores(prev => prev.filter(s => s.id !== tempId));
-        alert("Failed to mark attendance: " + attError.message);
+        alert("Marking failed: " + attError.message);
       }
     }
   };
@@ -356,11 +349,10 @@ const App: React.FC = () => {
     const tables = getTableNames(newId);
     setSewadars(prev => [...prev, { id: newId, name, gender, group }]);
     const { error } = await supabase.from(tables.sewadars).insert({ id: newId, name, gender, group });
-    if (!error) {
-      toggleAttendance(newId);
-    } else {
+    if (!error) toggleAttendance(newId);
+    else {
       setSewadars(prev => prev.filter(s => s.id !== newId));
-      alert("Failed to register sewadar: " + error.message);
+      alert("Registration failed.");
     }
   };
 
@@ -368,30 +360,24 @@ const App: React.FC = () => {
     if (!activeVolunteer) return;
     const sewadar = sewadars.find(s => s.id === sewadarId);
     if (!sewadar) return;
-    const currentCount = scores.filter(s => s.sewadarId === sewadarId && s.game === game && !s.isDeleted).length;
-    if (currentCount >= 5) {
-      alert(`Limit Reached! ${sewadar.name} has already been awarded points for ${game} 5 times.`);
-      return;
-    }
     const tables = getTableNames(sewadarId);
     const scoreId = `${sewadarId.startsWith('L') ? 'lscore' : 'man'}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     setScores(prev => [...prev, { id: scoreId, sewadarId, name: sewadar.name, game, points, timestamp: Date.now(), volunteerId: activeVolunteer.id, isDeleted: false }]);
-    const { error } = await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: game, points: points, timestamp: Date.now(), volunteer_id: activeVolunteer.id, is_deleted: false });
+    const { error } = await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game, points, timestamp: Date.now(), volunteer_id: activeVolunteer.id, is_deleted: false });
     if (error) {
        setScores(prev => prev.filter(s => s.id !== scoreId));
-       alert("Failed to award points: " + error.message);
+       alert("Point award failed.");
     }
   };
 
   const deleteScore = async (scoreId: string) => {
     if (!scoreId) return;
     setScores(prev => prev.map(s => s.id === scoreId ? { ...s, isDeleted: true } : s));
-    const isLadies = scoreId.startsWith('lscore') || scoreId.startsWith('L-') || scoreId.includes('-Ladies-') || scoreId.startsWith('att-L');
-    const targetTable = isLadies ? 'ladies_scores' : 'scores';
-    const { error } = await supabase.from(targetTable).update({ is_deleted: true }).eq('id', scoreId);
+    const table = (scoreId.startsWith('lscore') || scoreId.startsWith('L-')) ? 'ladies_scores' : 'scores';
+    const { error } = await supabase.from(table).update({ is_deleted: true }).eq('id', scoreId);
     if (error) {
        setScores(prev => prev.map(s => s.id === scoreId ? { ...s, isDeleted: false } : s));
-       alert("Delete failed: " + error.message);
+       alert("Delete failed.");
     }
   };
 
@@ -399,7 +385,6 @@ const App: React.FC = () => {
     setActiveVolunteer(null);
     setActiveView('Participant');
     localStorage.removeItem(STORAGE_KEY_VOLUNTEER);
-    localStorage.removeItem(STORAGE_KEY_VIEW);
   };
 
   if (loading) {

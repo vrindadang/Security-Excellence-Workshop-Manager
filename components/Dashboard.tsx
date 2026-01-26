@@ -62,44 +62,47 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
     const doc = new jsPDF();
     const todayStr = new Date().toLocaleDateString();
     
+    // Calculate Gender Statistics
+    const todayAtt = attendance.filter(a => a.date === today);
+    const gentsTotal = sewadars.filter(s => s.gender === 'Gents').length;
+    const ladiesTotal = sewadars.filter(s => s.gender === 'Ladies').length;
+    const presentIds = new Set(todayAtt.map(a => a.sewadarId));
+    const gentsPresent = sewadars.filter(s => s.gender === 'Gents' && presentIds.has(s.id)).length;
+    const ladiesPresent = sewadars.filter(s => s.gender === 'Ladies' && presentIds.has(s.id)).length;
+
+    // Header Design
     doc.setFillColor(79, 70, 229);
-    doc.rect(0, 0, 210, 30, 'F');
+    doc.rect(0, 0, 210, 35, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
     doc.text("Daily Attendance Report", 14, 18);
     doc.setFontSize(10);
-    doc.text(`Generated on: ${todayStr} | Source: Supabase Live Database`, 14, 25);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated on: ${todayStr} | Status: Live Workshop Data`, 14, 25);
+    
+    // Attendance Summary Text at top
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TOTAL PRESENT: Gents (${gentsPresent}/${gentsTotal}) | Ladies (${ladiesPresent}/${ladiesTotal})`, 14, 30);
 
-    let lastY = 40;
+    let lastY = 45;
     const allGroups = ['Ladies', ...GENTS_GROUPS];
-
     allGroups.forEach(group => {
       const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
       const groupAttRecords = attendance
         .filter(a => a.date === today && groupSewadarIds.includes(a.sewadarId))
         .sort((a, b) => a.name.localeCompare(b.name));
-
+      
       if (groupAttRecords.length > 0) {
-        if (lastY > 260) {
-          doc.addPage();
-          lastY = 20;
-        }
-
+        if (lastY > 260) { doc.addPage(); lastY = 20; }
         doc.setFontSize(14);
         doc.setTextColor(30, 41, 59);
         doc.setFont('helvetica', 'bold');
         doc.text(`${group} Group`, 14, lastY);
-        
         const tableData = groupAttRecords.map((record, index) => {
           const volName = VOLUNTEERS.find(v => v.id === record.volunteerId)?.name || 'Admin';
-          return [
-            index + 1,
-            record.name || 'Unknown Sewadar',
-            new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            volName
-          ];
+          return [index + 1, record.name || 'Unknown', new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), volName];
         });
-
         autoTable(doc, {
           startY: lastY + 5,
           head: [['#', 'Sewadar Name', 'Time In', 'Verified By']],
@@ -108,18 +111,15 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
           headStyles: { fillColor: [99, 102, 241], textColor: 255 },
           margin: { left: 14, right: 14 }
         });
-
         lastY = (doc as any).lastAutoTable.finalY + 15;
       }
     });
-
     doc.save(`Attendance_Report_${today}.pdf`);
   };
 
   const generatePointsPDF = () => {
     const doc = new jsPDF();
     const todayStr = new Date().toLocaleDateString();
-
     doc.setFillColor(16, 185, 129);
     doc.rect(0, 0, 210, 30, 'F');
     doc.setTextColor(255, 255, 255);
@@ -127,14 +127,11 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
     doc.text("Workshop Points Summary", 14, 18);
     doc.setFontSize(10);
     doc.text(`Generated on: ${todayStr} | Source: Supabase Live Records`, 14, 25);
-
     let lastY = 40;
     const allGroups = ['Ladies', ...GENTS_GROUPS];
-
     allGroups.forEach(group => {
       const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
       const pointRecordsMap: Record<string, { name: string, points: number, breakdown: string[] }> = {};
-      
       scores.filter(sc => !sc.isDeleted && groupSewadarIds.includes(sc.sewadarId)).forEach(sc => {
         if (!pointRecordsMap[sc.sewadarId]) {
           pointRecordsMap[sc.sewadarId] = { name: sc.name || 'Unnamed', points: 0, breakdown: [] };
@@ -142,27 +139,14 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
         pointRecordsMap[sc.sewadarId].points += sc.points;
         pointRecordsMap[sc.sewadarId].breakdown.push(`${sc.game}(${sc.points})`);
       });
-
       const list = Object.values(pointRecordsMap).sort((a, b) => b.points - a.points);
-
       if (list.length > 0) {
-        if (lastY > 260) {
-          doc.addPage();
-          lastY = 20;
-        }
-
+        if (lastY > 260) { doc.addPage(); lastY = 20; }
         doc.setFontSize(14);
         doc.setTextColor(30, 41, 59);
         doc.setFont('helvetica', 'bold');
         doc.text(`${group} Group Standings`, 14, lastY);
-
-        const tableData = list.map((item, index) => [
-          index + 1,
-          item.name,
-          item.breakdown.join(', '),
-          item.points
-        ]);
-
+        const tableData = list.map((item, index) => [index + 1, item.name, item.breakdown.join(', '), item.points]);
         autoTable(doc, {
           startY: lastY + 5,
           head: [['Rank', 'Name', 'Activity Breakdown', 'Total']],
@@ -172,30 +156,24 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
           columnStyles: { 2: { cellWidth: 80 } },
           margin: { left: 14, right: 14 }
         });
-
         lastY = (doc as any).lastAutoTable.finalY + 15;
       }
     });
-
     doc.save(`Workshop_Points_${today}.pdf`);
   };
 
   return (
     <div className="space-y-6 pb-20">
-      {/* Reports Header */}
+      {/* Workshop Performance Header */}
       <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] shadow-xl text-white">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div>
-            <h2 className="text-xl font-black tracking-tight mb-1 text-center md:text-left">Live Reports</h2>
-            <p className="text-slate-400 text-xs text-center md:text-left">Download synced workshop data</p>
+            <h2 className="text-xl font-black tracking-tight mb-1 text-center md:text-left">Workshop Performance</h2>
+            <p className="text-slate-400 text-xs text-center md:text-left">Live reports synced from database</p>
           </div>
           <div className="flex gap-3 w-full md:w-auto">
-            <button onClick={generateAttendancePDF} className="flex-1 md:flex-none bg-indigo-500 hover:bg-indigo-600 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg transition-all active:scale-95">
-              Attendance
-            </button>
-            <button onClick={generatePointsPDF} className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-600 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg transition-all active:scale-95">
-              Points
-            </button>
+            <button onClick={generateAttendancePDF} className="flex-1 md:flex-none bg-indigo-500 hover:bg-indigo-600 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg transition-all active:scale-95">Attendance</button>
+            <button onClick={generatePointsPDF} className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-600 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg transition-all active:scale-95">Points</button>
           </div>
         </div>
       </div>
@@ -218,7 +196,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
         </div>
       </div>
 
-      {/* Group Performance Chart */}
+      {/* Group Performance Graph */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div className="flex items-center justify-between mb-6">
            <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">Group Performance</h3>
@@ -254,75 +232,36 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
       {/* Emergency Management Section */}
       <div className="bg-red-50 border-2 border-dashed border-red-200 p-8 rounded-[2rem] shadow-sm animate-fade-in">
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.268 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
+          <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
+             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
           </div>
           <div>
-            <h3 className="text-lg font-black text-red-900 tracking-tight leading-none mb-1">Workshop Sync Tools</h3>
-            <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">Immediate Point Corrections</p>
+            <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none mb-1">Fix Point Discrepancies</h3>
+            <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Emergency Sync Tools (Admin Only)</p>
           </div>
         </div>
         
         <div className="grid grid-cols-1 gap-4">
           {isSuperAdmin && onHealAttendancePoints && (
-            <>
-             <button 
+            <button 
               onClick={() => onHealAttendancePoints(true)}
               disabled={syncingMasterList}
-              className={`py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all bg-emerald-600 text-white shadow-xl hover:bg-emerald-700 active:scale-[0.98] ${
+              className={`py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all bg-emerald-600 text-white shadow-xl shadow-emerald-100 hover:bg-emerald-700 active:scale-[0.98] ${
                 syncingMasterList ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             >
-              Update All Attendance to 100 Pts
+              Convert Today's 50s to 100s
             </button>
-            <button 
-              onClick={() => onHealAttendancePoints(false)}
-              disabled={syncingMasterList}
-              className={`py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border-2 border-slate-200 text-slate-600 hover:bg-white active:scale-[0.98] ${
-                syncingMasterList ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              Recalculate Today (10:30 AM Rule)
-            </button>
-            </>
           )}
 
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <button 
-              onClick={onClearAttendance}
-              disabled={syncingMasterList || !isSuperAdmin}
-              className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${
-                syncingMasterList || !isSuperAdmin
-                  ? 'bg-red-100 text-red-300 cursor-not-allowed' 
-                  : 'bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98]'
-              }`}
-            >
-              Unmark Attendance
-            </button>
-            <button 
-              onClick={onSyncMasterList} 
-              disabled={syncingMasterList || !isSuperAdmin}
-              className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${
-                syncingMasterList || !isSuperAdmin
-                  ? 'bg-red-100 text-red-300 cursor-not-allowed' 
-                  : 'bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98]'
-              }`}
-            >
-              Reset Sewadar List
-            </button>
+          <div className="grid grid-cols-2 gap-4 mt-2">
+            <button onClick={onClearAttendance} disabled={syncingMasterList || !isSuperAdmin} className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${syncingMasterList || !isSuperAdmin ? 'bg-red-100 text-red-300 cursor-not-allowed' : 'bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98]'}`}>Unmark Attendance</button>
+            <button onClick={onSyncMasterList} disabled={syncingMasterList || !isSuperAdmin} className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${syncingMasterList || !isSuperAdmin ? 'bg-red-100 text-red-300 cursor-not-allowed' : 'bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98]'}`}>Reset Sewadar List</button>
           </div>
         </div>
-
-        {!isSuperAdmin && (
-          <p className="mt-4 text-center text-red-400 font-bold text-[10px] uppercase tracking-widest">
-            Restricted: Only Super Admin can access these tools.
-          </p>
-        )}
+        {!isSuperAdmin && <p className="mt-4 text-center text-red-400 font-bold text-[10px] uppercase tracking-widest">Restricted: Super Admin access required.</p>}
       </div>
     </div>
   );
 };
-
 export default Dashboard;
