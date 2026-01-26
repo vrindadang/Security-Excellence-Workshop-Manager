@@ -279,22 +279,45 @@ const App: React.FC = () => {
     const existing = attendance.find(a => a.sewadarId === sewadarId && a.date === dateStr);
     
     if (existing) {
+      // --- OPTIMISTIC UNMARK ---
+      setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
+      // Also remove the "Daily Attendance" score locally
+      setScores(prev => prev.filter(s => !(s.sewadarId === sewadarId && s.game === 'Daily Attendance')));
+
       const { error: attError } = await supabase.from(tables.attendance).delete().match({ sewadar_id: sewadarId, date: dateStr });
       if (!attError) {
-        setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
         const startOfDay = new Date(now.setHours(0,0,0,0)).getTime();
         const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
         await supabase.from(tables.scores).delete().match({ sewadar_id: sewadarId, game: 'Daily Attendance' }).gte('timestamp', startOfDay).lte('timestamp', endOfDay);
       } else {
-        alert("Failed to unmark attendance. This might be due to a missing DELETE policy in Supabase RLS.");
+        // Rollback on failure
+        const [{data: att}, {data: sc}] = await Promise.all([
+           supabase.from(tables.attendance).select('*').match({ sewadar_id: sewadarId, date: dateStr }),
+           supabase.from(tables.scores).select('*').match({ sewadar_id: sewadarId, game: 'Daily Attendance' })
+        ]);
+        if (att) setAttendance(prev => [...prev, ...att.map((a: any) => ({ sewadarId: a.sewadar_id, name: a.name || '', date: a.date, timestamp: Number(a.timestamp), volunteerId: a.volunteer_id }))]);
+        if (sc) setScores(prev => [...prev, ...sc.map((s: any) => ({ id: s.id, sewadarId: s.sewadar_id, name: s.name || '', game: s.game, points: s.points, timestamp: Number(s.timestamp), volunteerId: s.volunteer_id, isDeleted: s.is_deleted }))]);
+        alert("Failed to unmark. Please check your internet or Supabase DELETE policies.");
       }
     } else {
+      // --- OPTIMISTIC MARK ---
       const timestamp = now.getTime();
       const attendancePoints = now.getHours() < 10 ? 100 : 50;
+      const tempId = `temp-${Date.now()}`;
+
+      setAttendance(prev => [...prev, { sewadarId, name: sewadar.name, date: dateStr, timestamp, volunteerId: activeVolunteer.id }]);
+      setScores(prev => [...prev, { id: tempId, sewadarId, name: sewadar.name, game: 'Daily Attendance', points: attendancePoints, timestamp, volunteerId: activeVolunteer.id, isDeleted: false }]);
+
       const { error: attError } = await supabase.from(tables.attendance).insert({ sewadar_id: sewadarId, name: sewadar.name, date: dateStr, timestamp: timestamp, volunteer_id: activeVolunteer.id });
       if (!attError) {
         const scoreId = `att-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: 'Daily Attendance', points: attendancePoints, timestamp: timestamp, volunteer_id: activeVolunteer.id, is_deleted: false });
+        // Real score ID will come back via subscription, so we don't strictly need to swap tempId here, but we could.
+      } else {
+        // Rollback on failure
+        setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
+        setScores(prev => prev.filter(s => s.id !== tempId));
+        alert("Failed to mark attendance: " + attError.message);
       }
     }
   };
@@ -304,10 +327,15 @@ const App: React.FC = () => {
     const newId = `${gender === 'Gents' ? 'G' : 'L'}-Added-${Date.now()}`;
     const tables = getTableNames(newId);
     
+    // Optimistic add to local list
+    setSewadars(prev => [...prev, { id: newId, name, gender, group }]);
+
     const { error } = await supabase.from(tables.sewadars).insert({ id: newId, name, gender, group });
     if (!error) {
-      setSewadars(prev => [...prev, { id: newId, name, gender, group }]);
       toggleAttendance(newId);
+    } else {
+      setSewadars(prev => prev.filter(s => s.id !== newId));
+      alert("Failed to register sewadar: " + error.message);
     }
   };
 
@@ -324,14 +352,34 @@ const App: React.FC = () => {
 
     const tables = getTableNames(sewadarId);
     const scoreId = `${sewadarId.startsWith('L') ? 'lscore' : 'man'}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: game, points: points, timestamp: Date.now(), volunteer_id: activeVolunteer.id, is_deleted: false });
+    
+    // Optimistic score add
+    setScores(prev => [...prev, { id: scoreId, sewadarId, name: sewadar.name, game, points, timestamp: Date.now(), volunteerId: activeVolunteer.id, isDeleted: false }]);
+
+    const { error } = await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: game, points: points, timestamp: Date.now(), volunteer_id: activeVolunteer.id, is_deleted: false });
+    if (error) {
+       setScores(prev => prev.filter(s => s.id !== scoreId));
+       alert("Failed to award points: " + error.message);
+    }
   };
 
   const deleteScore = async (scoreId: string) => {
     if (!scoreId) return;
-    const { error } = await supabase.from('scores').update({ is_deleted: true }).eq('id', scoreId);
+    
+    // Optimistic soft-delete
+    setScores(prev => prev.map(s => s.id === scoreId ? { ...s, isDeleted: true } : s));
+
+    // Ladies scores are in ladies_scores, Gents in scores. 
+    // We check both or use the ID prefix to determine the table.
+    const isLadies = scoreId.startsWith('lscore') || scoreId.startsWith('L-') || scoreId.includes('-Ladies-') || scoreId.startsWith('att-L');
+    
+    const targetTable = isLadies ? 'ladies_scores' : 'scores';
+    const { error } = await supabase.from(targetTable).update({ is_deleted: true }).eq('id', scoreId);
+    
     if (error) {
-      await supabase.from('ladies_scores').update({ is_deleted: true }).eq('id', scoreId);
+       // Rollback if DB failed
+       setScores(prev => prev.map(s => s.id === scoreId ? { ...s, isDeleted: false } : s));
+       alert("Delete failed: " + error.message);
     }
   };
 
