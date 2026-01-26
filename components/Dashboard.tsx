@@ -12,11 +12,11 @@ interface Props {
   onSyncMasterList?: () => void;
   syncingMasterList?: boolean;
   onClearAttendance?: () => void;
-  onClearPoints?: () => void;
+  onHealAttendancePoints?: (forceTo100?: boolean) => void;
   activeVolunteer?: Volunteer | null;
 }
 
-const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMasterList, syncingMasterList, onClearAttendance, onClearPoints, activeVolunteer }) => {
+const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMasterList, syncingMasterList, onClearAttendance, onHealAttendancePoints, activeVolunteer }) => {
   const today = new Date().toISOString().split('T')[0];
   const isSuperAdmin = activeVolunteer?.id === 'sa' || activeVolunteer?.role === 'Super Admin';
 
@@ -260,59 +260,65 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
             </svg>
           </div>
           <div>
-            <h3 className="text-lg font-black text-red-900 tracking-tight leading-none mb-1">Workshop Reset Tools</h3>
-            <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">Emergency Super Admin Actions</p>
+            <h3 className="text-lg font-black text-red-900 tracking-tight leading-none mb-1">Workshop Sync Tools</h3>
+            <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">Immediate Point Corrections</p>
           </div>
         </div>
         
-        <p className="text-red-800/70 text-sm font-medium leading-relaxed mb-6">
-          Use these options to purge workshop data. <strong>These actions are permanent and cannot be undone.</strong>
-        </p>
+        <div className="grid grid-cols-1 gap-4">
+          {isSuperAdmin && onHealAttendancePoints && (
+            <>
+             <button 
+              onClick={() => onHealAttendancePoints(true)}
+              disabled={syncingMasterList}
+              className={`py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all bg-emerald-600 text-white shadow-xl hover:bg-emerald-700 active:scale-[0.98] ${
+                syncingMasterList ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              Update All Attendance to 100 Pts
+            </button>
+            <button 
+              onClick={() => onHealAttendancePoints(false)}
+              disabled={syncingMasterList}
+              className={`py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border-2 border-slate-200 text-slate-600 hover:bg-white active:scale-[0.98] ${
+                syncingMasterList ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              Recalculate Today (10:30 AM Rule)
+            </button>
+            </>
+          )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <button 
-            onClick={onClearAttendance}
-            disabled={syncingMasterList || !isSuperAdmin}
-            className={`py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
-              syncingMasterList || !isSuperAdmin
-                ? 'bg-red-100 text-red-300 cursor-not-allowed' 
-                : 'bg-red-600 text-white shadow-xl shadow-red-100 hover:bg-red-700 active:scale-[0.98]'
-            }`}
-          >
-            Clear Attendance
-          </button>
-          
-          <button 
-            onClick={onClearPoints}
-            disabled={syncingMasterList || !isSuperAdmin}
-            className={`py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
-              syncingMasterList || !isSuperAdmin
-                ? 'bg-red-100 text-red-300 cursor-not-allowed' 
-                : 'bg-red-600 text-white shadow-xl shadow-red-100 hover:bg-red-700 active:scale-[0.98]'
-            }`}
-          >
-            Clear All Points
-          </button>
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <button 
+              onClick={onClearAttendance}
+              disabled={syncingMasterList || !isSuperAdmin}
+              className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${
+                syncingMasterList || !isSuperAdmin
+                  ? 'bg-red-100 text-red-300 cursor-not-allowed' 
+                  : 'bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98]'
+              }`}
+            >
+              Unmark Attendance
+            </button>
+            <button 
+              onClick={onSyncMasterList} 
+              disabled={syncingMasterList || !isSuperAdmin}
+              className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${
+                syncingMasterList || !isSuperAdmin
+                  ? 'bg-red-100 text-red-300 cursor-not-allowed' 
+                  : 'bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98]'
+              }`}
+            >
+              Reset Sewadar List
+            </button>
+          </div>
         </div>
 
         {!isSuperAdmin && (
           <p className="mt-4 text-center text-red-400 font-bold text-[10px] uppercase tracking-widest">
-            Only the Super Admin profile can use these reset tools.
+            Restricted: Only Super Admin can access these tools.
           </p>
-        )}
-
-        {isSuperAdmin && onSyncMasterList && (
-           <div className="mt-6 pt-6 border-t border-red-100">
-             <button 
-               onClick={onSyncMasterList} 
-               disabled={syncingMasterList}
-               className={`w-full py-3 border-2 border-red-100 text-red-500 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
-                 syncingMasterList ? 'opacity-50' : 'hover:bg-red-100'
-               }`}
-             >
-               Hard Sync Master List
-             </button>
-           </div>
         )}
       </div>
     </div>

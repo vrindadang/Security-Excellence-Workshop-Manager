@@ -148,7 +148,7 @@ const App: React.FC = () => {
               return [...prev, { id: newScore.id, sewadarId: newScore.sewadar_id, name: newScore.name || '', game: newScore.game, points: newScore.points, timestamp: Number(newScore.timestamp), volunteerId: newScore.volunteer_id, isDeleted: newScore.is_deleted }];
             });
           } else if (payload.eventType === 'UPDATE') {
-            setScores(prev => prev.map(s => s.id === payload.new.id ? { ...s, isDeleted: payload.new.is_deleted } : s));
+            setScores(prev => prev.map(s => s.id === payload.new.id ? { ...s, isDeleted: payload.new.is_deleted, points: payload.new.points } : s));
           } else if (payload.eventType === 'DELETE') {
             setScores(prev => prev.filter(s => s.id !== payload.old.id));
           }
@@ -217,12 +217,7 @@ const App: React.FC = () => {
 
       const errors = results.filter(r => r.error);
       if (errors.length > 0) {
-        const rlsError = errors.find(e => e.status === 403 || e.error?.message.includes('policy'));
-        if (rlsError) {
-          alert("PERMISSION ERROR (403): Your Supabase project is blocking deletions. Please ensure you have created a DELETE policy for the 'anon' role on these tables in your Supabase dashboard.");
-        } else {
-          alert(`Database Error: ${errors[0].error?.message}`);
-        }
+        alert(`Database Error: ${errors[0].error?.message}`);
         return;
       }
       
@@ -237,35 +232,74 @@ const App: React.FC = () => {
     }
   };
 
-  const clearAllPoints = async () => {
+  const healAttendancePoints = async (forceTo100: boolean = false) => {
     if (!activeVolunteer || (activeVolunteer.id !== 'sa' && activeVolunteer.role !== 'Super Admin')) return;
-    if (!window.confirm("DANGER: This will permanently delete ALL score/points logs for both Gents and Ladies. Attendance logs will remain. Proceed?")) return;
+    
+    const confirmMsg = forceTo100 
+      ? "FORCE ALL TO 100: This will set ALL attendance points for TODAY to 100, ignoring the 10:30 AM rule. Use this to fix entries like Aman Sharma. Proceed?"
+      : "HEAL: This will check all attendance scores for today and correct those that should have been 100 points (marked before 10:30 AM). Proceed?";
+      
+    if (!window.confirm(confirmMsg)) return;
 
     setSyncing(true);
+    let correctedCount = 0;
     try {
-      const results = await Promise.all([
-        supabase.from('scores').delete().not('id', 'is', null),
-        supabase.from('ladies_scores').delete().not('id', 'is', null)
-      ]);
-      const errors = results.filter(r => r.error);
-      if (errors.length > 0) {
-        const rlsError = errors.find(e => e.status === 403 || e.error?.message.includes('policy'));
-        if (rlsError) {
-          alert("PERMISSION ERROR (403): Your Supabase project is blocking deletions. Please ensure you have created a DELETE policy for the 'anon' role on these tables in your Supabase dashboard.");
+      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const startOfDay = new Date(now.setHours(0,0,0,0)).getTime();
+      const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
+
+      const attendanceScoresToCheck = scores.filter(s => 
+        s.game === 'Daily Attendance' && 
+        s.timestamp >= startOfDay && 
+        s.timestamp <= endOfDay
+      );
+
+      for (const score of attendanceScoresToCheck) {
+        let correctPoints;
+        if (forceTo100) {
+          correctPoints = 100;
         } else {
-          alert(`Database Error: ${errors[0].error?.message}`);
+          const dateObj = new Date(score.timestamp);
+          const isEarly = dateObj.getHours() < 10 || (dateObj.getHours() === 10 && dateObj.getMinutes() < 30);
+          correctPoints = isEarly ? 100 : 50;
         }
-        return;
+
+        if (score.points !== correctPoints) {
+          const isLadies = score.sewadarId.startsWith('L-');
+          const table = isLadies ? 'ladies_scores' : 'scores';
+          
+          const { error } = await supabase.from(table).update({ points: correctPoints }).eq('id', score.id);
+          if (!error) {
+            correctedCount++;
+            setScores(prev => prev.map(s => s.id === score.id ? { ...s, points: correctPoints } : s));
+          }
+        }
       }
-      
-      setScores([]);
-      alert("SUCCESS: All points records have been cleared.");
+      alert(`HEAL COMPLETE: Corrected ${correctedCount} point records.`);
     } catch (err: any) {
       console.error(err);
-      alert(`Wipe failed: ${err.message}`);
+      alert(`Heal failed: ${err.message}`);
     } finally {
       setSyncing(false);
     }
+  };
+
+  const promoteTo100 = async (scoreId: string) => {
+     if (!activeVolunteer) return;
+     const score = scores.find(s => s.id === scoreId);
+     if (!score) return;
+     
+     const isLadies = score.sewadarId.startsWith('L-');
+     const table = isLadies ? 'ladies_scores' : 'scores';
+     
+     // Optimistic
+     setScores(prev => prev.map(s => s.id === scoreId ? { ...s, points: 100 } : s));
+     const { error } = await supabase.from(table).update({ points: 100 }).eq('id', scoreId);
+     if (error) {
+       setScores(prev => prev.map(s => s.id === scoreId ? { ...s, points: 50 } : s));
+       alert("Failed to promote: " + error.message);
+     }
   };
 
   const toggleAttendance = async (sewadarId: string) => {
@@ -279,9 +313,7 @@ const App: React.FC = () => {
     const existing = attendance.find(a => a.sewadarId === sewadarId && a.date === dateStr);
     
     if (existing) {
-      // --- OPTIMISTIC UNMARK ---
       setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
-      // Also remove the "Daily Attendance" score locally
       setScores(prev => prev.filter(s => !(s.sewadarId === sewadarId && s.game === 'Daily Attendance')));
 
       const { error: attError } = await supabase.from(tables.attendance).delete().match({ sewadar_id: sewadarId, date: dateStr });
@@ -290,19 +322,17 @@ const App: React.FC = () => {
         const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
         await supabase.from(tables.scores).delete().match({ sewadar_id: sewadarId, game: 'Daily Attendance' }).gte('timestamp', startOfDay).lte('timestamp', endOfDay);
       } else {
-        // Rollback on failure
         const [{data: att}, {data: sc}] = await Promise.all([
            supabase.from(tables.attendance).select('*').match({ sewadar_id: sewadarId, date: dateStr }),
            supabase.from(tables.scores).select('*').match({ sewadar_id: sewadarId, game: 'Daily Attendance' })
         ]);
         if (att) setAttendance(prev => [...prev, ...att.map((a: any) => ({ sewadarId: a.sewadar_id, name: a.name || '', date: a.date, timestamp: Number(a.timestamp), volunteerId: a.volunteer_id }))]);
         if (sc) setScores(prev => [...prev, ...sc.map((s: any) => ({ id: s.id, sewadarId: s.sewadar_id, name: s.name || '', game: s.game, points: s.points, timestamp: Number(s.timestamp), volunteerId: s.volunteer_id, isDeleted: s.is_deleted }))]);
-        alert("Failed to unmark. Please check your internet or Supabase DELETE policies.");
       }
     } else {
-      // --- OPTIMISTIC MARK ---
       const timestamp = now.getTime();
-      const attendancePoints = now.getHours() < 10 ? 100 : 50;
+      const isEarly = now.getHours() < 10 || (now.getHours() === 10 && now.getMinutes() < 30);
+      const attendancePoints = isEarly ? 100 : 50;
       const tempId = `temp-${Date.now()}`;
 
       setAttendance(prev => [...prev, { sewadarId, name: sewadar.name, date: dateStr, timestamp, volunteerId: activeVolunteer.id }]);
@@ -312,9 +342,7 @@ const App: React.FC = () => {
       if (!attError) {
         const scoreId = `att-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: 'Daily Attendance', points: attendancePoints, timestamp: timestamp, volunteer_id: activeVolunteer.id, is_deleted: false });
-        // Real score ID will come back via subscription, so we don't strictly need to swap tempId here, but we could.
       } else {
-        // Rollback on failure
         setAttendance(prev => prev.filter(a => !(a.sewadarId === sewadarId && a.date === dateStr)));
         setScores(prev => prev.filter(s => s.id !== tempId));
         alert("Failed to mark attendance: " + attError.message);
@@ -326,10 +354,7 @@ const App: React.FC = () => {
     if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) return;
     const newId = `${gender === 'Gents' ? 'G' : 'L'}-Added-${Date.now()}`;
     const tables = getTableNames(newId);
-    
-    // Optimistic add to local list
     setSewadars(prev => [...prev, { id: newId, name, gender, group }]);
-
     const { error } = await supabase.from(tables.sewadars).insert({ id: newId, name, gender, group });
     if (!error) {
       toggleAttendance(newId);
@@ -343,19 +368,14 @@ const App: React.FC = () => {
     if (!activeVolunteer) return;
     const sewadar = sewadars.find(s => s.id === sewadarId);
     if (!sewadar) return;
-
     const currentCount = scores.filter(s => s.sewadarId === sewadarId && s.game === game && !s.isDeleted).length;
     if (currentCount >= 5) {
       alert(`Limit Reached! ${sewadar.name} has already been awarded points for ${game} 5 times.`);
       return;
     }
-
     const tables = getTableNames(sewadarId);
     const scoreId = `${sewadarId.startsWith('L') ? 'lscore' : 'man'}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    
-    // Optimistic score add
     setScores(prev => [...prev, { id: scoreId, sewadarId, name: sewadar.name, game, points, timestamp: Date.now(), volunteerId: activeVolunteer.id, isDeleted: false }]);
-
     const { error } = await supabase.from(tables.scores).insert({ id: scoreId, sewadar_id: sewadarId, name: sewadar.name, game: game, points: points, timestamp: Date.now(), volunteer_id: activeVolunteer.id, is_deleted: false });
     if (error) {
        setScores(prev => prev.filter(s => s.id !== scoreId));
@@ -365,19 +385,11 @@ const App: React.FC = () => {
 
   const deleteScore = async (scoreId: string) => {
     if (!scoreId) return;
-    
-    // Optimistic soft-delete
     setScores(prev => prev.map(s => s.id === scoreId ? { ...s, isDeleted: true } : s));
-
-    // Ladies scores are in ladies_scores, Gents in scores. 
-    // We check both or use the ID prefix to determine the table.
     const isLadies = scoreId.startsWith('lscore') || scoreId.startsWith('L-') || scoreId.includes('-Ladies-') || scoreId.startsWith('att-L');
-    
     const targetTable = isLadies ? 'ladies_scores' : 'scores';
     const { error } = await supabase.from(targetTable).update({ is_deleted: true }).eq('id', scoreId);
-    
     if (error) {
-       // Rollback if DB failed
        setScores(prev => prev.map(s => s.id === scoreId ? { ...s, isDeleted: false } : s));
        alert("Delete failed: " + error.message);
     }
@@ -450,8 +462,8 @@ const App: React.FC = () => {
         <div key={activeView} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           {activeView === 'Participant' && <ParticipantView sewadars={sewadars} attendance={attendance} scores={scores} onAdminLogin={() => setActiveView('Login')} />}
           {activeView === 'Attendance' && <AttendanceManager sewadars={sewadars} attendance={attendance} onToggle={toggleAttendance} onAddSewadar={addSewadar} />}
-          {activeView === 'Points' && <PointsManager sewadars={sewadars} attendance={attendance} scores={scores} onAddScore={addScore} onDeleteScore={deleteScore} />}
-          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} onSyncMasterList={syncMasterList} syncingMasterList={syncing} onClearAttendance={clearAllAttendance} onClearPoints={clearAllPoints} activeVolunteer={activeVolunteer} />}
+          {activeView === 'Points' && <PointsManager sewadars={sewadars} attendance={attendance} scores={scores} onAddScore={addScore} onDeleteScore={deleteScore} onPromoteTo100={promoteTo100} />}
+          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} onSyncMasterList={syncMasterList} syncingMasterList={syncing} onClearAttendance={clearAllAttendance} onHealAttendancePoints={healAttendancePoints} activeVolunteer={activeVolunteer} />}
         </div>
       </main>
 
