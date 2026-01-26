@@ -20,7 +20,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
   const today = new Date().toISOString().split('T')[0];
   const isSuperAdmin = activeVolunteer?.id === 'sa' || activeVolunteer?.role === 'Super Admin';
 
-  const totalAttendance = attendance.filter(a => a.date === today).length;
+  const totalAttendanceCount = attendance.filter(a => a.date === today).length;
 
   const combinedGroupData = useMemo(() => {
     const allGroups = [...GENTS_GROUPS, 'Ladies'];
@@ -62,11 +62,11 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
     const doc = new jsPDF();
     const todayStr = new Date().toLocaleDateString();
     
-    // Calculate Gender Statistics
+    // Calculate Statistics
     const todayAtt = attendance.filter(a => a.date === today);
-    const gentsTotal = sewadars.filter(s => s.gender === 'Gents').length;
-    const ladiesTotal = sewadars.filter(s => s.gender === 'Ladies').length;
+    const totalSewadarsCount = sewadars.length;
     const presentIds = new Set(todayAtt.map(a => a.sewadarId));
+    
     const gentsPresent = sewadars.filter(s => s.gender === 'Gents' && presentIds.has(s.id)).length;
     const ladiesPresent = sewadars.filter(s => s.gender === 'Ladies' && presentIds.has(s.id)).length;
 
@@ -76,14 +76,17 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.setFont('helvetica', 'bold');
-    doc.text("Daily Attendance Report", 14, 18);
+    doc.text("Daily Attendance Report", 14, 15);
+    
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated on: ${todayStr} | Status: Live Workshop Data`, 14, 25);
+    doc.text(`Generated on: ${todayStr} | Status: Live Workshop Data`, 14, 21);
     
-    // Attendance Summary Text at top
+    // Summary line at the top as requested
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(`TOTAL PRESENT: Gents (${gentsPresent}/${gentsTotal}) | Ladies (${ladiesPresent}/${ladiesTotal})`, 14, 30);
+    const summaryText = `Total Sewadars: ${totalSewadarsCount} | Gents Present: ${gentsPresent} | Ladies Present: ${ladiesPresent}`;
+    doc.text(summaryText, 14, 29);
 
     let lastY = 45;
     const allGroups = ['Ladies', ...GENTS_GROUPS];
@@ -183,7 +186,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 text-center">
           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Today's Presence</p>
           <div className="flex items-center justify-center gap-1">
-             <span className="text-3xl font-black text-slate-900">{totalAttendance}</span>
+             <span className="text-3xl font-black text-slate-900">{totalAttendanceCount}</span>
              <span className="text-[10px] text-slate-400 font-bold">/ {sewadars.length}</span>
           </div>
         </div>
