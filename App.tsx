@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { ViewState, AttendanceRecord, ScoreRecord, Sewadar, Volunteer, Gender, GentsGroup } from './types';
-import { INITIAL_SEWADARS } from './constants';
+import { INITIAL_SEWADARS, VOLUNTEERS } from './constants';
 import AttendanceManager from './components/AttendanceManager';
 import PointsManager from './components/PointsManager';
 import Dashboard from './components/Dashboard';
@@ -36,7 +37,6 @@ const App: React.FC = () => {
     return restrictedNames.includes(v.name);
   };
 
-  // Helper to filter out any "Behenji" dummy records
   const filterValidSewadars = (list: Sewadar[]) => {
     return list.filter(s => !s.name.toLowerCase().includes('behenji'));
   };
@@ -71,7 +71,6 @@ const App: React.FC = () => {
     const initData = async () => {
       try {
         setLoading(true);
-        // Fetch from both master tables
         const [{ data: gents }, { data: ladies }] = await Promise.all([
           supabase.from('sewadars').select('*'),
           supabase.from('ladies_sewadars').select('*')
@@ -82,7 +81,6 @@ const App: React.FC = () => {
 
         const today = new Date().toISOString().split('T')[0];
         
-        // Fetch attendance and scores from all tables
         const [
           { data: gentsAtt }, { data: ladiesAtt },
           { data: gentsScore }, { data: ladiesScore }
@@ -123,7 +121,6 @@ const App: React.FC = () => {
     initData();
   }, []);
 
-  // Set up 6 subscriptions (3 for Gents, 3 for Ladies)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
@@ -155,7 +152,7 @@ const App: React.FC = () => {
           } else if (payload.eventType === 'DELETE') {
             setScores(prev => prev.filter(s => s.id !== payload.old.id));
           }
-        } else { // Sewadars
+        } else {
           if (payload.eventType === 'INSERT') {
             const newSew = payload.new as Sewadar;
             if (newSew.name.toLowerCase().includes('behenji')) return;
@@ -174,20 +171,18 @@ const App: React.FC = () => {
 
   const syncMasterList = async () => {
     if (isRestrictedVolunteer(activeVolunteer)) return;
-    if (!confirm("This will PERMANENTLY DELETE all current sewadar records and reload the master list (132 Ladies + Gents). Attendance and Scores will NOT be deleted, but may lose linked names. Proceed?")) return;
+    if (!window.confirm("This will PERMANENTLY DELETE all current sewadar records and reload the master list. Proceed?")) return;
     
     setSyncing(true);
     try {
       const gents = filterValidSewadars(INITIAL_SEWADARS.filter(s => s.gender === 'Gents'));
       const ladies = filterValidSewadars(INITIAL_SEWADARS.filter(s => s.gender === 'Ladies'));
 
-      // 1. Purge existing records to remove "Behenji" or dummy data
       await Promise.all([
-        supabase.from('sewadars').delete().neq('id', 'purged'), 
-        supabase.from('ladies_sewadars').delete().neq('id', 'purged')
+        supabase.from('sewadars').delete().not('id', 'is', null), 
+        supabase.from('ladies_sewadars').delete().not('id', 'is', null)
       ]);
 
-      // 2. Insert fresh master list
       await Promise.all([
         supabase.from('sewadars').insert(gents),
         supabase.from('ladies_sewadars').insert(ladies)
@@ -198,10 +193,76 @@ const App: React.FC = () => {
         supabase.from('ladies_sewadars').select('*')
       ]);
       setSewadars(filterValidSewadars([...(g || []), ...(l || [])]));
-      alert("Clean Sync Complete! Dummy records removed and master list reloaded.");
+      alert("Master list re-synced successfully.");
     } catch (err) {
       console.error("Sync failed:", err);
-      alert("Database sync failed. Check connection.");
+      alert("Database sync failed.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const clearAllAttendance = async () => {
+    if (!activeVolunteer || (activeVolunteer.id !== 'sa' && activeVolunteer.role !== 'Super Admin')) return;
+    if (!window.confirm("UNMARK ALL: This will delete all attendance logs AND the points associated with attendance for both Gents and Ladies. Proceed?")) return;
+
+    setSyncing(true);
+    try {
+      const results = await Promise.all([
+        supabase.from('attendance').delete().not('sewadar_id', 'is', null),
+        supabase.from('ladies_attendance').delete().not('sewadar_id', 'is', null),
+        supabase.from('scores').delete().eq('game', 'Daily Attendance'),
+        supabase.from('ladies_scores').delete().eq('game', 'Daily Attendance')
+      ]);
+
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        const rlsError = errors.find(e => e.status === 403 || e.error?.message.includes('policy'));
+        if (rlsError) {
+          alert("PERMISSION ERROR (403): Your Supabase project is blocking deletions. Please ensure you have created a DELETE policy for the 'anon' role on these tables in your Supabase dashboard.");
+        } else {
+          alert(`Database Error: ${errors[0].error?.message}`);
+        }
+        return;
+      }
+      
+      setAttendance([]);
+      setScores(prev => prev.filter(s => s.game !== 'Daily Attendance'));
+      alert("SUCCESS: All attendance has been unmarked.");
+    } catch (err: any) {
+      console.error(err);
+      alert(`Wipe failed: ${err.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const clearAllPoints = async () => {
+    if (!activeVolunteer || (activeVolunteer.id !== 'sa' && activeVolunteer.role !== 'Super Admin')) return;
+    if (!window.confirm("DANGER: This will permanently delete ALL score/points logs for both Gents and Ladies. Attendance logs will remain. Proceed?")) return;
+
+    setSyncing(true);
+    try {
+      const results = await Promise.all([
+        supabase.from('scores').delete().not('id', 'is', null),
+        supabase.from('ladies_scores').delete().not('id', 'is', null)
+      ]);
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        const rlsError = errors.find(e => e.status === 403 || e.error?.message.includes('policy'));
+        if (rlsError) {
+          alert("PERMISSION ERROR (403): Your Supabase project is blocking deletions. Please ensure you have created a DELETE policy for the 'anon' role on these tables in your Supabase dashboard.");
+        } else {
+          alert(`Database Error: ${errors[0].error?.message}`);
+        }
+        return;
+      }
+      
+      setScores([]);
+      alert("SUCCESS: All points records have been cleared.");
+    } catch (err: any) {
+      console.error(err);
+      alert(`Wipe failed: ${err.message}`);
     } finally {
       setSyncing(false);
     }
@@ -224,6 +285,8 @@ const App: React.FC = () => {
         const startOfDay = new Date(now.setHours(0,0,0,0)).getTime();
         const endOfDay = new Date(now.setHours(23,59,59,999)).getTime();
         await supabase.from(tables.scores).delete().match({ sewadar_id: sewadarId, game: 'Daily Attendance' }).gte('timestamp', startOfDay).lte('timestamp', endOfDay);
+      } else {
+        alert("Failed to unmark attendance. This might be due to a missing DELETE policy in Supabase RLS.");
       }
     } else {
       const timestamp = now.getTime();
@@ -238,10 +301,6 @@ const App: React.FC = () => {
 
   const addSewadar = async (name: string, gender: Gender, group: GentsGroup | 'Ladies') => {
     if (!activeVolunteer || isRestrictedVolunteer(activeVolunteer)) return;
-    if (name.toLowerCase().includes('behenji')) {
-      alert("Invalid name. 'Behenji' placeholder is not allowed.");
-      return;
-    }
     const newId = `${gender === 'Gents' ? 'G' : 'L'}-Added-${Date.now()}`;
     const tables = getTableNames(newId);
     
@@ -257,7 +316,6 @@ const App: React.FC = () => {
     const sewadar = sewadars.find(s => s.id === sewadarId);
     if (!sewadar) return;
 
-    // Check 5-score limit per game
     const currentCount = scores.filter(s => s.sewadarId === sewadarId && s.game === game && !s.isDeleted).length;
     if (currentCount >= 5) {
       alert(`Limit Reached! ${sewadar.name} has already been awarded points for ${game} 5 times.`);
@@ -271,10 +329,10 @@ const App: React.FC = () => {
 
   const deleteScore = async (scoreId: string) => {
     if (!scoreId) return;
-    await Promise.all([
-      supabase.from('scores').update({ is_deleted: true }).eq('id', scoreId),
-      supabase.from('ladies_scores').update({ is_deleted: true }).eq('id', scoreId)
-    ]);
+    const { error } = await supabase.from('scores').update({ is_deleted: true }).eq('id', scoreId);
+    if (error) {
+      await supabase.from('ladies_scores').update({ is_deleted: true }).eq('id', scoreId);
+    }
   };
 
   const handleLogout = () => {
@@ -320,7 +378,7 @@ const App: React.FC = () => {
             <h1 className="text-sm md:text-xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-indigo-200">
               Security Excellence Workshop
             </h1>
-            <p className="text-[10px] md:text-xs text-indigo-300 font-medium">SKRM Manager • Master List</p>
+            <p className="text-[10px] md:text-xs text-indigo-300 font-medium">SKRM Manager • Live Sync</p>
           </div>
           <div className="flex items-center gap-2">
             {activeVolunteer ? (
@@ -345,7 +403,7 @@ const App: React.FC = () => {
           {activeView === 'Participant' && <ParticipantView sewadars={sewadars} attendance={attendance} scores={scores} onAdminLogin={() => setActiveView('Login')} />}
           {activeView === 'Attendance' && <AttendanceManager sewadars={sewadars} attendance={attendance} onToggle={toggleAttendance} onAddSewadar={addSewadar} />}
           {activeView === 'Points' && <PointsManager sewadars={sewadars} attendance={attendance} scores={scores} onAddScore={addScore} onDeleteScore={deleteScore} />}
-          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} onSyncMasterList={syncMasterList} syncingMasterList={syncing} />}
+          {activeView === 'Dashboard' && <Dashboard sewadars={sewadars} attendance={attendance} scores={scores} onSyncMasterList={syncMasterList} syncingMasterList={syncing} onClearAttendance={clearAllAttendance} onClearPoints={clearAllPoints} activeVolunteer={activeVolunteer} />}
         </div>
       </main>
 

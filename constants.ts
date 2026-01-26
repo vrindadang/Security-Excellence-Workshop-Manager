@@ -1,4 +1,3 @@
-
 import { Sewadar, GentsGroup, Volunteer } from './types';
 
 export const GENTS_GROUPS: GentsGroup[] = [
@@ -12,7 +11,8 @@ export const VOLUNTEERS: Volunteer[] = [
   { id: 'v4', name: 'Sonal Takkar', role: 'Logistics Manager', password: '444' },
   { id: 'v5', name: 'Volunteer 1', role: 'Volunteer', password: '555' },
   { id: 'v6', name: 'Volunteer 2', role: 'Volunteer', password: '666' },
-  { id: 'v7', name: 'Volunteer 3', role: 'Volunteer', password: '777' }
+  { id: 'v7', name: 'Volunteer 3', role: 'Volunteer', password: '777' },
+  { id: 'sa', name: 'Super Admin', role: 'Super Admin', password: '000' }
 ];
 
 const SUNDAY_LIST = [

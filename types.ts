@@ -39,6 +39,7 @@ export interface ScoreRecord {
 export type ViewState = 'Participant' | 'Attendance' | 'Points' | 'Dashboard' | 'Login';
 
 export const GAMES = [
+  'Spiritual Quiz',
   'Chess',
   'Carrom Board',
   'Tambola',

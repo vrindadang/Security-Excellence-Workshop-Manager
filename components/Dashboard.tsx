@@ -1,5 +1,6 @@
+
 import React, { useMemo } from 'react';
-import { Sewadar, AttendanceRecord, ScoreRecord } from '../types';
+import { Sewadar, AttendanceRecord, ScoreRecord, Volunteer } from '../types';
 import { GENTS_GROUPS, VOLUNTEERS } from '../constants';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -10,10 +11,14 @@ interface Props {
   scores: ScoreRecord[];
   onSyncMasterList?: () => void;
   syncingMasterList?: boolean;
+  onClearAttendance?: () => void;
+  onClearPoints?: () => void;
+  activeVolunteer?: Volunteer | null;
 }
 
-const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMasterList, syncingMasterList }) => {
+const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMasterList, syncingMasterList, onClearAttendance, onClearPoints, activeVolunteer }) => {
   const today = new Date().toISOString().split('T')[0];
+  const isSuperAdmin = activeVolunteer?.id === 'sa' || activeVolunteer?.role === 'Super Admin';
 
   const totalAttendance = attendance.filter(a => a.date === today).length;
 
@@ -63,7 +68,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
     doc.setFontSize(22);
     doc.text("Daily Attendance Report", 14, 18);
     doc.setFontSize(10);
-    doc.text(`Generated on: ${todayStr} | Source: Supabase Database`, 14, 25);
+    doc.text(`Generated on: ${todayStr} | Source: Supabase Live Database`, 14, 25);
 
     let lastY = 40;
     const allGroups = ['Ladies', ...GENTS_GROUPS];
@@ -108,7 +113,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
       }
     });
 
-    doc.save(`Attendance_Live_${today}.pdf`);
+    doc.save(`Attendance_Report_${today}.pdf`);
   };
 
   const generatePointsPDF = () => {
@@ -172,46 +177,30 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
       }
     });
 
-    doc.save(`Points_Live_${today}.pdf`);
+    doc.save(`Workshop_Points_${today}.pdf`);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
+      {/* Reports Header */}
       <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-[2rem] shadow-xl text-white">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div>
-            <h2 className="text-xl font-black tracking-tight mb-1">Live Database Reports</h2>
-            <p className="text-slate-400 text-xs">Download synchronized workshop data</p>
+            <h2 className="text-xl font-black tracking-tight mb-1 text-center md:text-left">Live Reports</h2>
+            <p className="text-slate-400 text-xs text-center md:text-left">Download synced workshop data</p>
           </div>
           <div className="flex gap-3 w-full md:w-auto">
-            <button onClick={generateAttendancePDF} className="flex-1 md:flex-none bg-indigo-500 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg active:scale-95">
-              Attendance PDF
+            <button onClick={generateAttendancePDF} className="flex-1 md:flex-none bg-indigo-500 hover:bg-indigo-600 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg transition-all active:scale-95">
+              Attendance
             </button>
-            <button onClick={generatePointsPDF} className="flex-1 md:flex-none bg-emerald-500 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg active:scale-95">
-              Points PDF
+            <button onClick={generatePointsPDF} className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-600 px-5 py-3 rounded-xl font-bold text-xs uppercase shadow-lg transition-all active:scale-95">
+              Points
             </button>
           </div>
         </div>
-        
-        {onSyncMasterList && (
-          <div className="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black uppercase text-indigo-300 tracking-widest">Database Management</span>
-              <p className="text-[11px] text-slate-400">Remove old dummies & sync master list</p>
-            </div>
-            <button 
-              onClick={onSyncMasterList} 
-              disabled={syncingMasterList}
-              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                syncingMasterList ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-white/10 hover:bg-white text-white hover:text-slate-900 shadow-lg'
-              }`}
-            >
-              {syncingMasterList ? 'Purging...' : 'Clean Sync (Remove Dummies)'}
-            </button>
-          </div>
-        )}
       </div>
 
+      {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 text-center">
           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Today's Presence</p>
@@ -229,6 +218,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
         </div>
       </div>
 
+      {/* Group Performance Chart */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div className="flex items-center justify-between mb-6">
            <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">Group Performance</h3>
@@ -244,7 +234,7 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
            </div>
         </div>
         
-        <div className="h-[280px] w-full flex items-end justify-between gap-2 md:gap-4 px-2">
+        <div className="h-[240px] w-full flex items-end justify-between gap-2 md:gap-4 px-2">
            {combinedGroupData.map((data) => {
              const attHeight = (data.Attendance / maxAttendance) * 100;
              const ptsHeight = (data.Points / maxPoints) * 100;
@@ -259,6 +249,71 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
              );
            })}
         </div>
+      </div>
+
+      {/* Emergency Management Section */}
+      <div className="bg-red-50 border-2 border-dashed border-red-200 p-8 rounded-[2rem] shadow-sm animate-fade-in">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.268 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-lg font-black text-red-900 tracking-tight leading-none mb-1">Workshop Reset Tools</h3>
+            <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">Emergency Super Admin Actions</p>
+          </div>
+        </div>
+        
+        <p className="text-red-800/70 text-sm font-medium leading-relaxed mb-6">
+          Use these options to purge workshop data. <strong>These actions are permanent and cannot be undone.</strong>
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button 
+            onClick={onClearAttendance}
+            disabled={syncingMasterList || !isSuperAdmin}
+            className={`py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
+              syncingMasterList || !isSuperAdmin
+                ? 'bg-red-100 text-red-300 cursor-not-allowed' 
+                : 'bg-red-600 text-white shadow-xl shadow-red-100 hover:bg-red-700 active:scale-[0.98]'
+            }`}
+          >
+            Clear Attendance
+          </button>
+          
+          <button 
+            onClick={onClearPoints}
+            disabled={syncingMasterList || !isSuperAdmin}
+            className={`py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
+              syncingMasterList || !isSuperAdmin
+                ? 'bg-red-100 text-red-300 cursor-not-allowed' 
+                : 'bg-red-600 text-white shadow-xl shadow-red-100 hover:bg-red-700 active:scale-[0.98]'
+            }`}
+          >
+            Clear All Points
+          </button>
+        </div>
+
+        {!isSuperAdmin && (
+          <p className="mt-4 text-center text-red-400 font-bold text-[10px] uppercase tracking-widest">
+            Only the Super Admin profile can use these reset tools.
+          </p>
+        )}
+
+        {isSuperAdmin && onSyncMasterList && (
+           <div className="mt-6 pt-6 border-t border-red-100">
+             <button 
+               onClick={onSyncMasterList} 
+               disabled={syncingMasterList}
+               className={`w-full py-3 border-2 border-red-100 text-red-500 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                 syncingMasterList ? 'opacity-50' : 'hover:bg-red-100'
+               }`}
+             >
+               Hard Sync Master List
+             </button>
+           </div>
+        )}
       </div>
     </div>
   );
