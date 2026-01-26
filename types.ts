@@ -46,5 +46,7 @@ export const GAMES = [
   'Break the glass',
   'Ludo',
   'Volleyball',
-  'Cricket'
+  'Cricket',
+  'Table Tennis',
+  'Badminton'
 ] as const;
