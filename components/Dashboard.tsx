@@ -1,9 +1,10 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Sewadar, AttendanceRecord, ScoreRecord, Volunteer } from '../types';
 import { GENTS_GROUPS, VOLUNTEERS } from '../constants';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { supabase } from '../supabase';
 
 interface Props {
   sewadars: Sewadar[];
@@ -18,6 +19,8 @@ interface Props {
 
 const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMasterList, syncingMasterList, onClearAttendance, onHealAttendancePoints, activeVolunteer }) => {
   const today = new Date().toISOString().split('T')[0];
+  const [selectedArchiveDate, setSelectedArchiveDate] = useState(today);
+  const [isFetchingArchive, setIsFetchingArchive] = useState(false);
   const isSuperAdmin = activeVolunteer?.id === 'sa' || activeVolunteer?.role === 'Super Admin';
 
   const totalAttendanceCount = attendance.filter(a => a.date === today).length;
@@ -58,14 +61,14 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
   const maxAttendance = Math.max(...combinedGroupData.map(d => d.Attendance), 10);
   const maxPoints = Math.max(...combinedGroupData.map(d => d.Points), 20);
 
-  const generateAttendancePDF = () => {
+  // Helper function to generate PDF based on provided attendance and date
+  const runAttendancePDF = (targetDate: string, attendanceData: AttendanceRecord[]) => {
     const doc = new jsPDF();
-    const todayStr = new Date().toLocaleDateString();
+    const displayDate = new Date(targetDate).toLocaleDateString();
     
     // Calculate Statistics
-    const todayAtt = attendance.filter(a => a.date === today);
     const totalSewadarsCount = sewadars.length;
-    const presentIds = new Set(todayAtt.map(a => a.sewadarId));
+    const presentIds = new Set(attendanceData.map(a => a.sewadarId));
     
     const gentsPresent = sewadars.filter(s => s.gender === 'Gents' && presentIds.has(s.id)).length;
     const ladiesPresent = sewadars.filter(s => s.gender === 'Ladies' && presentIds.has(s.id)).length;
@@ -80,9 +83,8 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
     
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated on: ${todayStr} | Status: Live Workshop Data`, 14, 21);
+    doc.text(`Report Date: ${displayDate} | Status: Workshop Archive`, 14, 21);
     
-    // Summary line at the top as requested
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     const summaryText = `Total Sewadars: ${totalSewadarsCount} | Gents Present: ${gentsPresent} | Ladies Present: ${ladiesPresent}`;
@@ -92,8 +94,8 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
     const allGroups = ['Ladies', ...GENTS_GROUPS];
     allGroups.forEach(group => {
       const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
-      const groupAttRecords = attendance
-        .filter(a => a.date === today && groupSewadarIds.includes(a.sewadarId))
+      const groupAttRecords = attendanceData
+        .filter(a => groupSewadarIds.includes(a.sewadarId))
         .sort((a, b) => a.name.localeCompare(b.name));
       
       if (groupAttRecords.length > 0) {
@@ -117,25 +119,29 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
         lastY = (doc as any).lastAutoTable.finalY + 15;
       }
     });
-    doc.save(`Attendance_Report_${today}.pdf`);
+    doc.save(`Attendance_Report_${targetDate}.pdf`);
   };
 
-  const generatePointsPDF = () => {
+  // Helper function for Points PDF
+  const runPointsPDF = (targetDate: string, scoresData: ScoreRecord[]) => {
     const doc = new jsPDF();
-    const todayStr = new Date().toLocaleDateString();
+    const displayDate = new Date(targetDate).toLocaleDateString();
     doc.setFillColor(16, 185, 129);
     doc.rect(0, 0, 210, 30, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(22);
     doc.text("Workshop Points Summary", 14, 18);
     doc.setFontSize(10);
-    doc.text(`Generated on: ${todayStr} | Source: Supabase Live Records`, 14, 25);
+    doc.text(`Report Date: ${displayDate} | Source: Workshop Records`, 14, 25);
     let lastY = 40;
     const allGroups = ['Ladies', ...GENTS_GROUPS];
     allGroups.forEach(group => {
       const groupSewadarIds = sewadars.filter(s => s.group === group).map(s => s.id);
       const pointRecordsMap: Record<string, { name: string, points: number, breakdown: string[] }> = {};
-      scores.filter(sc => !sc.isDeleted && groupSewadarIds.includes(sc.sewadarId)).forEach(sc => {
+      
+      // For archive points, we usually want cumulative or date-specific? 
+      // Usually "Points Summary" implies current standings, but for archives we just show the records requested.
+      scoresData.filter(sc => !sc.isDeleted && groupSewadarIds.includes(sc.sewadarId)).forEach(sc => {
         if (!pointRecordsMap[sc.sewadarId]) {
           pointRecordsMap[sc.sewadarId] = { name: sc.name || 'Unnamed', points: 0, breakdown: [] };
         }
@@ -162,7 +168,61 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
         lastY = (doc as any).lastAutoTable.finalY + 15;
       }
     });
-    doc.save(`Workshop_Points_${today}.pdf`);
+    doc.save(`Workshop_Points_${targetDate}.pdf`);
+  };
+
+  const generateAttendancePDF = () => {
+    runAttendancePDF(today, attendance.filter(a => a.date === today));
+  };
+
+  const generatePointsPDF = () => {
+    runPointsPDF(today, scores);
+  };
+
+  const handleDownloadArchive = async (type: 'attendance' | 'points') => {
+    if (!selectedArchiveDate) return;
+    setIsFetchingArchive(true);
+    try {
+      if (type === 'attendance') {
+        const [{ data: gentsAtt }, { data: ladiesAtt }] = await Promise.all([
+          supabase.from('attendance').select('*').eq('date', selectedArchiveDate),
+          supabase.from('ladies_attendance').select('*').eq('date', selectedArchiveDate)
+        ]);
+
+        const combinedAtt = [...(gentsAtt || []), ...(ladiesAtt || [])].map((a: any) => ({
+          sewadarId: a.sewadar_id,
+          name: a.name || '',
+          date: a.date,
+          timestamp: Number(a.timestamp),
+          volunteerId: a.volunteer_id
+        }));
+
+        if (combinedAtt.length === 0) {
+          alert(`No attendance records found for ${selectedArchiveDate}`);
+        } else {
+          runAttendancePDF(selectedArchiveDate, combinedAtt);
+        }
+      } else {
+        // For points, we use current scores but since historical points aren't easily filtered by "earned on this date"
+        // without complex timestamp logic, we generate the full standings as of that period.
+        // Actually, let's filter scores by timestamp to match the date.
+        const startOfDay = new Date(selectedArchiveDate).setHours(0, 0, 0, 0);
+        const endOfDay = new Date(selectedArchiveDate).setHours(23, 59, 59, 999);
+        
+        const filteredScores = scores.filter(s => s.timestamp >= startOfDay && s.timestamp <= endOfDay);
+        
+        if (filteredScores.length === 0) {
+          alert(`No point records found for ${selectedArchiveDate}`);
+        } else {
+          runPointsPDF(selectedArchiveDate, filteredScores);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to fetch archive data.");
+    } finally {
+      setIsFetchingArchive(false);
+    }
   };
 
   return (
@@ -231,6 +291,60 @@ const Dashboard: React.FC<Props> = ({ sewadars, attendance, scores, onSyncMaster
            })}
         </div>
       </div>
+
+      {/* Historical Archives Section - SUPER ADMIN ONLY */}
+      {isSuperAdmin && (
+        <div className="bg-slate-900 p-8 rounded-[2rem] shadow-2xl border border-slate-800 animate-fade-in">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center text-white shadow-lg">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-white tracking-tight leading-none mb-1">Workshop Archives</h3>
+              <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Historical Performance Lookup</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Report Date</label>
+              <input 
+                type="date" 
+                max={today}
+                value={selectedArchiveDate}
+                onChange={(e) => setSelectedArchiveDate(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-6 py-4 text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => handleDownloadArchive('attendance')}
+                disabled={isFetchingArchive}
+                className="flex flex-col items-center justify-center gap-2 bg-indigo-600/10 border border-indigo-500/30 p-6 rounded-2xl hover:bg-indigo-600/20 transition-all group disabled:opacity-50"
+              >
+                <svg className="w-6 h-6 text-indigo-400 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                <span className="text-[10px] font-black text-white uppercase tracking-widest">Attendance PDF</span>
+              </button>
+              <button 
+                onClick={() => handleDownloadArchive('points')}
+                disabled={isFetchingArchive}
+                className="flex flex-col items-center justify-center gap-2 bg-emerald-600/10 border border-emerald-500/30 p-6 rounded-2xl hover:bg-emerald-600/20 transition-all group disabled:opacity-50"
+              >
+                <svg className="w-6 h-6 text-emerald-400 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                <span className="text-[10px] font-black text-white uppercase tracking-widest">Points PDF</span>
+              </button>
+            </div>
+            
+            {isFetchingArchive && (
+              <div className="flex items-center justify-center gap-2 py-2">
+                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Retrieving Historical Records...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Emergency Management Section */}
       <div className="bg-red-50 border-2 border-dashed border-red-200 p-8 rounded-[2rem] shadow-sm animate-fade-in">
